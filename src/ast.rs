@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use crate::token::Token;
 
 trait Node  {
@@ -34,11 +32,32 @@ pub struct ExpressionStatement {
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Identifier(Identifier),
+    IntegerLiteral(IntegerLiteral),
+    Prefix(PrefixExpression),
+    Infix(InfixExpression)
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Identifier {
     pub value: String
+}
+
+#[derive(Debug, PartialEq)]
+pub struct IntegerLiteral {
+    pub value: i32
+}
+
+#[derive(Debug, PartialEq)]
+pub struct PrefixExpression {
+    pub operator: String,
+    pub right: Box<Expression>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct InfixExpression {
+    pub operator: String,
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
 }
 
 #[derive(Debug)]

@@ -62,9 +62,9 @@ impl Lexer {
             Some('}') => Token(TokenKind::Rbrace, "}".into()),
             None => Token(TokenKind::EOF, "\n".into()),
             Some(ch) => {
-                if self.is_letter(&ch) {
+                if self.is_letter(Some(ch)) {
                     return Token::from_word(self.read_identifier());
-                } else if self.is_digital(&ch) {
+                } else if self.is_digital(Some(ch)) {
                     return Token(TokenKind::Int, self.read_number().into());
                 } else {
                     Token(TokenKind::Illegal, "".into())
@@ -92,7 +92,7 @@ impl Lexer {
 
     fn read_identifier(&mut self) -> &str {
         let position = self.position;
-        while self.ch.is_some() && self.is_letter(&self.ch.unwrap()) {
+        while self.ch.is_some() && self.is_letter(self.ch) {
             self.read_char();
         }
         self.input[position..self.position].into()
@@ -100,18 +100,24 @@ impl Lexer {
 
     fn read_number(&mut self) -> &str {
         let position = self.position;
-        while self.is_digital(&self.ch.unwrap()) {
+        while self.is_digital(self.ch) {
             self.read_char();
         }
         self.input[position..self.position].into()
     }
 
-    fn is_letter(&self, ch: &char) -> bool {
-        'a' <= *ch && *ch <= 'z' || 'A' <= *ch && *ch <= 'Z' || *ch == '_'
+    fn is_letter(&self, ch: Option<char>) -> bool {
+        if let Some(ch) = ch {
+            return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+        }
+        false
     }
 
-    fn is_digital(&self, ch: &char) -> bool {
-        '0' <= *ch && *ch <= '9'
+    fn is_digital(&self, ch: Option<char>) -> bool {
+        if let Some(ch) = ch {
+            return '0' <= ch && ch <= '9'
+        }
+        false
     }
 
     fn peek_char(&self) -> Option<char> {
