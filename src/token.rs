@@ -1,10 +1,10 @@
 #[derive(Debug, PartialEq)]
-pub enum Token {
+pub enum TokenKind {
     Illegal,
     EOF,
 
-    Word(Word),
-    Int(String),
+    Int,
+    Ident,
 
     // Operators
     Assign,
@@ -25,40 +25,32 @@ pub enum Token {
     Rparen,
     Lbrace,
     Rbrace,
-}
 
-
-#[derive(Debug, PartialEq)]
-pub enum Word {
-    Keyword(Keyword),
-
-    Ident(String,)
-}
-
-
-impl From<&str> for Word {
-    fn from(value: &str) -> Self {
-        match value {
-            "fn" => Word::Keyword(Keyword::Funfction),
-            "let" => Word::Keyword(Keyword::Let),
-            "true" => Word::Keyword(Keyword::True),
-            "false" => Word::Keyword(Keyword::False),
-            "if" => Word::Keyword(Keyword::If),
-            "else" => Word::Keyword(Keyword::Else),
-            "return" => Word::Keyword(Keyword::Return),
-            _ => Word::Ident(value.into()),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Keyword {
-    Funfction,
+    // Keyword
+    Function,
     Let,
     True,
     False,
     If,
     Else,
     Return,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Token(pub TokenKind, pub String);
+
+impl Token {
+    pub fn from_word(value: &str) -> Self {
+        match value {
+            "fn" => Token(TokenKind::Function, value.into()),
+            "let" => Token(TokenKind::Let, value.into()),
+            "true" => Token(TokenKind::True, value.into()),
+            "false" => Token(TokenKind::False, value.into()),
+            "if" => Token(TokenKind::If, value.into()),
+            "else" => Token(TokenKind::Else, value.into()),
+            "return" => Token(TokenKind::Return, value.into()),
+            _ => Token(TokenKind::Ident, value.into()),
+        }
+    }
 }
 

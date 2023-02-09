@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 
-use crate::{lexer::Lexer, token::Token};
+use crate::{lexer::Lexer, token::TokenKind};
 
 fn prompt() {
     print!(">> ");
@@ -15,7 +15,7 @@ pub fn start() {
         loop {
             let token = lexer.next_token();
             println!("{:?}", token);
-            if token == Token::EOF {
+            if token.0 == TokenKind::EOF {
                 break;
             }
         }

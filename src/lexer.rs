@@ -1,4 +1,4 @@
-use crate::token::{Token, Word};
+use crate::token::{Token, TokenKind};
 
 #[derive(Debug)]
 pub struct Lexer {
@@ -34,44 +34,40 @@ impl Lexer {
         self.skip_whitespace();
 
         let token = match self.ch {
-            Some('=') => {
-                match self.peek_char() {
-                    Some('=') => {
-                        self.read_char();
-                        Token::Eq
-                    }
-                    _ => Token::Assign
+            Some('=') => match self.peek_char() {
+                Some('=') => {
+                    self.read_char();
+                    Token(TokenKind::Eq, "==".into())
                 }
-            }
-            Some('+') => Token::Plus,
-            Some('-') => Token::Minus,
-            Some('!') => {
-                match self.peek_char() {
-                    Some('=') => {
-                        self.read_char();
-                        Token::NotEq
-                    },
-                    _ => Token::Bang
+                _ => Token(TokenKind::Assign, "=".into()),
+            },
+            Some('+') => Token(TokenKind::Plus, "+".into()),
+            Some('-') => Token(TokenKind::Minus, "-".into()),
+            Some('!') => match self.peek_char() {
+                Some('=') => {
+                    self.read_char();
+                    Token(TokenKind::NotEq, "!=".into())
                 }
-            }
-            Some('/') => Token::Slash,
-            Some('*') => Token::Asterisk,
-            Some('<') => Token::Lt,
-            Some('>') => Token::Gt,
-            Some(';') => Token::Semicolon,
-            Some('(') => Token::Lparen,
-            Some(')') => Token::Rparen,
-            Some(',') => Token::Comma,
-            Some('{') => Token::Lbrace,
-            Some('}') => Token::Rbrace,
-            None => Token::EOF,
+                _ => Token(TokenKind::Bang, "!".into()),
+            },
+            Some('/') => Token(TokenKind::Slash, "/".into()),
+            Some('*') => Token(TokenKind::Asterisk, "*".into()),
+            Some('<') => Token(TokenKind::Lt, "<".into()),
+            Some('>') => Token(TokenKind::Gt, ">".into()),
+            Some(';') => Token(TokenKind::Semicolon, ";".into()),
+            Some('(') => Token(TokenKind::Lparen, "(".into()),
+            Some(')') => Token(TokenKind::Rparen, ")".into()),
+            Some(',') => Token(TokenKind::Comma, ",".into()),
+            Some('{') => Token(TokenKind::Lbrace, "{".into()),
+            Some('}') => Token(TokenKind::Rbrace, "}".into()),
+            None => Token(TokenKind::EOF, "\n".into()),
             Some(ch) => {
                 if self.is_letter(&ch) {
-                    return Token::Word(Word::from(self.read_identifier()));
+                    return Token::from_word(self.read_identifier());
                 } else if self.is_digital(&ch) {
-                    return Token::Int(self.read_number().into());
+                    return Token(TokenKind::Int, self.read_number().into());
                 } else {
-                    Token::Illegal
+                    Token(TokenKind::Illegal, "".into())
                 }
             }
         };
@@ -130,7 +126,7 @@ impl Lexer {
 #[cfg(test)]
 mod tests {
     use super::Lexer;
-    use crate::token::{Token, Word};
+    use crate::token::{Token, TokenKind};
 
     #[test]
     fn test_simple_tokens() {
@@ -138,16 +134,16 @@ mod tests {
         let mut lexer = Lexer::new(input.into());
 
         let expected: Vec<_> = vec![
-            Token::Assign,
-            Token::Plus,
-            Token::Lparen,
-            Token::Rparen,
-            Token::Lbrace,
-            Token::Rbrace,
+            TokenKind::Assign,
+            TokenKind::Plus,
+            TokenKind::Lparen,
+            TokenKind::Rparen,
+            TokenKind::Lbrace,
+            TokenKind::Rbrace,
         ];
 
         for token in expected.iter() {
-            assert_eq!(lexer.next_token(), *token);
+            assert_eq!(lexer.next_token().0, *token);
         }
     }
 
@@ -174,80 +170,80 @@ if (5 < 10) {
         let mut lexer = Lexer::new(input.into());
 
         let expected = vec![
-            Token::Word(Word::from("let")),
-            Token::Word(Word::from("five")),
-            Token::Assign,
-            Token::Int("5".into()),
-            Token::Semicolon,
-            Token::Word(Word::from("let")),
-            Token::Word(Word::from("ten")),
-            Token::Assign,
-            Token::Int("10".into()),
-            Token::Semicolon,
-            Token::Word(Word::from("let")),
-            Token::Word(Word::from("add")),
-            Token::Assign,
-            Token::Word(Word::from("fn")),
-            Token::Lparen,
-            Token::Word(Word::from("x")),
-            Token::Comma,
-            Token::Word(Word::from("y")),
-            Token::Rparen,
-            Token::Lbrace,
-            Token::Word(Word::from("x")),
-            Token::Plus,
-            Token::Word(Word::from("y")),
-            Token::Semicolon,
-            Token::Rbrace,
-            Token::Semicolon,
-            Token::Word(Word::from("let")),
-            Token::Word(Word::from("result")),
-            Token::Assign,
-            Token::Word(Word::from("add")),
-            Token::Lparen,
-            Token::Word(Word::from("five")),
-            Token::Comma,
-            Token::Word(Word::from("ten")),
-            Token::Rparen,
-            Token::Semicolon,
-            Token::Bang,
-            Token::Minus,
-            Token::Slash,
-            Token::Asterisk,
-            Token::Int("5".into()),
-            Token::Semicolon,
-            Token::Int("5".into()),
-            Token::Lt,
-            Token::Int("10".into()),
-            Token::Gt,
-            Token::Int("5".into()),
-            Token::Semicolon,
-            Token::Word(Word::from("if")),
-            Token::Lparen,
-            Token::Int("5".into()),
-            Token::Lt,
-            Token::Int("10".into()),
-            Token::Rparen,
-            Token::Lbrace,
-            Token::Word(Word::from("return")),
-            Token::Word(Word::from("true")),
-            Token::Semicolon,
-            Token::Rbrace,
-            Token::Word(Word::from("else")),
-            Token::Lbrace,
-            Token::Word(Word::from("return")),
-            Token::Word(Word::from("false")),
-            Token::Semicolon,
-            Token::Rbrace,
-            Token::Int("10".into()),
-            Token::Eq,
-            Token::Int("10".into()),
-            Token::Semicolon,
-            Token::Int("10".into()),
-            Token::NotEq,
-            Token::Int("9".into()),
-            Token::Semicolon,
-            Token::EOF,
+            Token(TokenKind::Let, "let".into()),
+            Token(TokenKind::Ident, "five".into()),
+            Token(TokenKind::Assign, "=".into()),
+            Token(TokenKind::Int, "5".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Let, "let".into()),
+            Token(TokenKind::Ident, "ten".into()),
+            Token(TokenKind::Assign, "=".into()),
+            Token(TokenKind::Int, "10".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Let, "let".into()),
+            Token(TokenKind::Ident, "add".into()),
+            Token(TokenKind::Assign, "=".into()),
+            Token(TokenKind::Function, "fn".into()),
+            Token(TokenKind::Lparen, "(".into()),
+            Token(TokenKind::Ident, "x".into()),
+            Token(TokenKind::Comma, ",".into()),
+            Token(TokenKind::Ident, "y".into()),
+            Token(TokenKind::Rparen, ")".into()),
+            Token(TokenKind::Lbrace, "{".into()),
+            Token(TokenKind::Ident, "x".into()),
+            Token(TokenKind::Plus, "+".into()),
+            Token(TokenKind::Ident, "y".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Rbrace, "}".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Let, "let".into()),
+            Token(TokenKind::Ident, "result".into()),
+            Token(TokenKind::Assign, "=".into()),
+            Token(TokenKind::Ident, "add".into()),
+            Token(TokenKind::Lparen, "(".into()),
+            Token(TokenKind::Ident, "five".into()),
+            Token(TokenKind::Comma, ",".into()),
+            Token(TokenKind::Ident, "ten".into()),
+            Token(TokenKind::Rparen, ")".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Bang, "!".into()),
+            Token(TokenKind::Minus, "-".into()),
+            Token(TokenKind::Slash, "/".into()),
+            Token(TokenKind::Asterisk, "*".into()),
+            Token(TokenKind::Int, "5".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Int, "5".into()),
+            Token(TokenKind::Lt, "<".into()),
+            Token(TokenKind::Int, "10".into()),
+            Token(TokenKind::Gt, ">".into()),
+            Token(TokenKind::Int, "5".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::If, "if".into()),
+            Token(TokenKind::Lparen, "(".into()),
+            Token(TokenKind::Int, "5".into()),
+            Token(TokenKind::Lt, "<".into()),
+            Token(TokenKind::Int, "10".into()),
+            Token(TokenKind::Rparen, ")".into()),
+            Token(TokenKind::Lbrace, "{".into()),
+            Token(TokenKind::Return, "return".into()),
+            Token(TokenKind::True, "true".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Rbrace, "}".into()),
+            Token(TokenKind::Else, "else".into()),
+            Token(TokenKind::Lbrace, "{".into()),
+            Token(TokenKind::Return, "return".into()),
+            Token(TokenKind::False, "false".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Rbrace, "}".into()),
+            Token(TokenKind::Int, "10".into()),
+            Token(TokenKind::Eq, "==".into()),
+            Token(TokenKind::Int, "10".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Int, "10".into()),
+            Token(TokenKind::NotEq, "!=".into()),
+            Token(TokenKind::Int, "9".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::EOF, "\n".into()),
         ];
 
         for token in expected.iter() {
