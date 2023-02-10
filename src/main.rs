@@ -1,4 +1,4 @@
-
+use crate::repl::Repl;
 
 mod token;
 mod lexer;
@@ -9,5 +9,6 @@ mod parser;
 fn main() {
     println!("Hello {}! This is the Monkey programming language!", whoami::username());
     println!("Feel free to type in commands");
-    repl::start();
+    let repl = Repl::new();
+    repl.start();
 }
