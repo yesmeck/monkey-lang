@@ -1,9 +1,12 @@
 use std::fmt::Display;
 
-use crate::token::Token;
-
-trait Node {
-    fn token_literal() -> Token;
+pub enum Node<'a> {
+    Program(&'a Program),
+    Statement(&'a Statement),
+    LetStatement(&'a LetStatement),
+    BlockStatement(&'a BlockStatement),
+    ExpressionStatement(&'a ExpressionStatement),
+    Expression(&'a Expression),
 }
 
 #[derive(Debug, PartialEq)]
@@ -140,11 +143,11 @@ impl Display for Identifier {
 
 #[derive(Debug, PartialEq)]
 pub struct IntegerLiteral {
-    pub value: i32,
+    pub value: i64,
 }
 
 impl IntegerLiteral {
-    pub fn new(value: i32) -> Self {
+    pub fn new(value: i64) -> Self {
         Self { value }
     }
 }

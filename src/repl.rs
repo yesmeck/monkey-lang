@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 
-use crate::{lexer::Lexer, parser::Parser, token::TokenKind};
+use crate::{ast::Node, evaluator::Evaluator, lexer::Lexer, parser::Parser};
 
 const MONKEY_FACE: &str = r#"            __,__
    .--.  .-"     "-.  .--.
@@ -18,7 +18,9 @@ const MONKEY_FACE: &str = r#"            __,__
 pub struct Repl {}
 
 impl Repl {
-    pub fn new() -> Self { Self { } }
+    pub fn new() -> Self {
+        Self {}
+    }
 
     fn prompt(&self) {
         print!(">> ");
@@ -48,7 +50,10 @@ impl Repl {
                 continue;
             }
 
-            println!("{}", program);
+            let evaluator = Evaluator::new();
+            let evaluated = evaluator.eval(Node::Program(&program));
+            println!("{}", evaluated.inspect());
+
             self.prompt();
         }
     }

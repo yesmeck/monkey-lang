@@ -106,7 +106,7 @@ impl<'a> Parser<'a> {
 
     fn parse_integer_literal(&mut self) -> Option<Expression> {
         Some(Expression::IntegerLiteral(IntegerLiteral {
-            value: self.cur_token.1.parse::<i32>().unwrap(),
+            value: self.cur_token.1.parse::<i64>().unwrap(),
         }))
     }
 
@@ -623,12 +623,9 @@ return y;
         ];
 
         for (input, output) in tests.iter() {
-            println!("{} = {}", input, output);
             let mut lexer = Lexer::new(input.to_string());
             let mut parser = Parser::new(&mut lexer);
             let program = parser.parse_program();
-
-            dbg!(&program);
 
             assert_eq!(format!("{}", program), output.to_string());
         }
