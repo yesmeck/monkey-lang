@@ -1,5 +1,5 @@
-use crate::ast::{BlockStatement, Expression, IfExpression, Node, Statement};
-use crate::object::{Boolean, Integer, Null, Object};
+use crate::ast::{BlockStatement, Expression, IfExpression, Node, Program, Statement};
+use crate::object::{Boolean, Inspector, Integer, Null, Object, ReturnValue, RuntimeError};
 
 pub struct Evaluator {}
 
@@ -10,13 +10,22 @@ impl Evaluator {
 
     pub fn eval(&self, ast: Node) -> Object {
         match ast {
-            Node::Program(node) => self.eval_statements(&node.statements),
+            Node::Program(node) => self.eval_program(node),
             // Node::Statement(node) => eval(ast)
             Node::Statement(Statement::Expression(node)) => {
                 self.eval(Node::Expression(&node.expression))
             }
 
-            Node::BlockStatement(node) => self.eval_statements(&node.statements),
+            Node::Statement(Statement::Return(node)) => {
+                let value = self.eval(Node::Expression(&node.return_value));
+                if self.is_error(&value) {
+                    value
+                } else {
+                    Object::ReturnValue(ReturnValue::new(value))
+                }
+            }
+
+            Node::BlockStatement(node) => self.eval_block_statement(node),
 
             Node::Expression(Expression::IntegerLiteral(node)) => {
                 Object::Integer(Integer::new(node.value))
@@ -28,12 +37,26 @@ impl Evaluator {
 
             Node::Expression(Expression::Prefix(node)) => {
                 let right = self.eval(Node::Expression(node.right.as_ref()));
-                self.eval_prefix_expression(node.operator.to_owned(), right)
+                if self.is_error(&right) {
+                    right
+                } else {
+                    self.eval_prefix_expression(node.operator.to_owned(), right)
+                }
             }
 
             Node::Expression(Expression::Infix(node)) => {
                 let left = self.eval(Node::Expression(node.left.as_ref()));
+
+                if self.is_error(&left) {
+                    return left;
+                }
+
                 let right = self.eval(Node::Expression(node.right.as_ref()));
+
+                if self.is_error(&right) {
+                    return right;
+                }
+
                 self.eval_infix_expression(node.operator.to_owned(), left, right)
             }
 
@@ -43,11 +66,33 @@ impl Evaluator {
         }
     }
 
-    fn eval_statements(&self, stmts: &Vec<Statement>) -> Object {
+    fn eval_program(&self, program: &Program) -> Object {
         let mut result = Object::Null(Null {});
 
-        for stmt in stmts.iter() {
+        for stmt in program.statements.iter() {
             result = self.eval(Node::Statement(stmt));
+
+            match result {
+                Object::ReturnValue(return_object) => return *return_object.value,
+                Object::RuntimeError(_) => return result,
+                _ => {}
+            }
+        }
+
+        result
+    }
+
+    fn eval_block_statement(&self, block: &BlockStatement) -> Object {
+        let mut result = Object::Null(Null {});
+
+        for stmt in block.statements.iter() {
+            result = self.eval(Node::Statement(stmt));
+
+            match result {
+                Object::ReturnValue(_) => return result,
+                Object::RuntimeError(_) => return result,
+                _ => {}
+            }
         }
 
         result
@@ -57,11 +102,24 @@ impl Evaluator {
         match operator.as_str() {
             "!" => self.eval_bang_operator_expression(right),
             "-" => self.eval_minux_operator_expression(right),
-            _ => Object::Null(Null {}),
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "unknown operator: {}{}",
+                operator,
+                right.kind()
+            ))),
         }
     }
 
     fn eval_infix_expression(&self, operator: String, left: Object, right: Object) -> Object {
+        if left.kind() != right.kind() {
+            return Object::RuntimeError(RuntimeError::new(format!(
+                "type mismatch: {} {} {}",
+                left.kind(),
+                operator,
+                right.kind()
+            )));
+        }
+
         if let Object::Integer(ref left) = left {
             if let Object::Integer(ref right) = right {
                 return self.eval_integer_infix_expression(operator, left, right);
@@ -75,7 +133,12 @@ impl Evaluator {
             let result = left != right;
             return self.native_bool_to_boolean_object(result);
         }
-        Object::Null(Null {})
+        Object::RuntimeError(RuntimeError::new(format!(
+            "unknown operator: {} {} {}",
+            left.kind(),
+            operator,
+            right.kind()
+        )))
     }
 
     fn eval_integer_infix_expression(
@@ -96,7 +159,12 @@ impl Evaluator {
             ">" => self.native_bool_to_boolean_object(left_value > right_value),
             "==" => self.native_bool_to_boolean_object(left_value == right_value),
             "!=" => self.native_bool_to_boolean_object(left_value != right_value),
-            _ => Object::Null(Null {}),
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "unknown operator: {} {} {}",
+                left.kind(),
+                operator,
+                right.kind()
+            ))),
         }
     }
 
@@ -117,17 +185,24 @@ impl Evaluator {
     fn eval_minux_operator_expression(&self, right: Object) -> Object {
         match right {
             Object::Integer(object) => Object::Integer(Integer::new(-object.value)),
-            _ => Object::Null(Null {}),
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "unknown operator: -{}",
+                right.kind()
+            ))),
         }
     }
 
     fn eval_if_expression(&self, ie: &IfExpression) -> Object {
         let condition = self.eval(Node::Expression(&ie.condition));
 
+        if self.is_error(&condition) {
+            return condition;
+        }
+
         if self.is_truthy(condition) {
             return self.eval(Node::BlockStatement(&ie.consequence));
         } else if let Some(ref alternative) = ie.alternative {
-            return self.eval(Node::BlockStatement(alternative))
+            return self.eval(Node::BlockStatement(alternative));
         }
 
         Object::Null(Null {})
@@ -146,6 +221,13 @@ impl Evaluator {
             Object::Null(_) => false,
             Object::Boolean(obj) => obj.value,
             _ => true,
+        }
+    }
+
+    fn is_error(&self, object: &Object) -> bool {
+        match object {
+            Object::RuntimeError(_) => true,
+            _ => false,
         }
     }
 }
@@ -189,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_integer_expression() {
+    fn test_eval_integer_expressions() {
         let tests = [
             ("5", 5),
             ("10", 10),
@@ -214,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_boolean_expresion() {
+    fn test_eval_boolean_expresions() {
         let tests = [
             ("true", true),
             ("false", false),
@@ -243,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_bang_operator() {
+    fn test_eval_bang_operators() {
         let tests = [
             ("!true", false),
             ("!false", true),
@@ -259,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn test_if_else_expression() {
+    fn test_if_else_expressions() {
         let tests = [
             ("if (true) { 10 )", Some(10)),
             ("if (false) { 10 )", None),
@@ -276,6 +358,64 @@ mod tests {
                 test_integer_object(evaluated, *integer as i64);
             } else {
                 test_null_object(evaluated);
+            }
+        }
+    }
+
+    #[test]
+    fn test_return_statements() {
+        let tests = [
+            ("return 10;", 10),
+            ("return 10; 9;", 10),
+            ("return 2 * 5; 9;", 10),
+            ("9; return 2 * 5; 9;", 10),
+            (
+                "if (10 > 1) {
+                    if (10 > 1) {
+                        return 10; 
+                    }
+                    return 1;
+                }",
+                10,
+            ),
+        ];
+
+        for (input, output) in tests.iter() {
+            println!("{} = {}", input, output);
+            test_integer_object(test_eval(input), *output);
+        }
+    }
+
+    #[test]
+    fn test_error_handling() {
+        let tests = [
+            ("5 + true;", "type mismatch: INTEGER + BOOLEAN"),
+            ("5 + true; 5;", "type mismatch: INTEGER + BOOLEAN"),
+            ("-true", "unknown operator: -BOOLEAN"),
+            ("true + false;", "unknown operator: BOOLEAN + BOOLEAN"),
+            (
+                "if (10 > 1) { true + false; }",
+                "unknown operator: BOOLEAN + BOOLEAN",
+            ),
+            (
+                "if (10 > 1) {
+                  if (10 > 1) {
+                    return true + false;
+                  }
+                  return 1; 
+                }",
+                "unknown operator: BOOLEAN + BOOLEAN",
+            ),
+        ];
+
+        for (input, output) in tests.iter() {
+            println!("{} => {}", input, output);
+            let evaluated = test_eval(input);
+
+            if let Object::RuntimeError(error) = evaluated {
+                assert_eq!(error.inspect(), format!("Error: {}", output));
+            } else {
+                panic!("not a error")
             }
         }
     }
