@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 
-use crate::{ast::Node, evaluator::Evaluator, lexer::Lexer, parser::Parser};
+use crate::{ast::Node, evaluator::Evaluator, lexer::Lexer, parser::Parser, enviroment::Enviroment};
 
 const MONKEY_FACE: &str = r#"            __,__
    .--.  .-"     "-.  .--.
@@ -38,6 +38,8 @@ impl Repl {
 
     pub fn start(&self) {
         self.prompt();
+        let mut env = Enviroment::new();
+        let mut evaluator = Evaluator::new(&mut env);
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             let mut lexer = Lexer::new(line.unwrap());
@@ -50,7 +52,6 @@ impl Repl {
                 continue;
             }
 
-            let evaluator = Evaluator::new();
             let evaluated = evaluator.eval(Node::Program(&program));
             println!("{}", evaluated.inspect());
 

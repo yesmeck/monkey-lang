@@ -7,6 +7,7 @@ mod ast;
 mod parser;
 mod object;
 mod evaluator;
+mod enviroment;
 
 fn main() {
     println!("Hello {}! This is the Monkey programming language!", whoami::username());

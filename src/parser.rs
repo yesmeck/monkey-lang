@@ -417,7 +417,6 @@ mod tests {
             LetStatement, PrefixExpression, Program, ReturnStatement, Statement,
         },
         lexer::Lexer,
-        parser,
     };
 
     use super::Parser;

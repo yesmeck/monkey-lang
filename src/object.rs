@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, rc::Rc};
 
 #[derive(Debug, PartialEq)]
 pub enum ObjectKind {
@@ -21,7 +21,7 @@ impl Display for ObjectKind {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Integer(Integer),
     Boolean(Boolean),
@@ -57,7 +57,7 @@ pub trait Inspector {
     fn inspect(&self) -> String;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Integer {
     pub value: i64,
 }
@@ -78,7 +78,7 @@ impl Inspector for Integer {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Boolean {
     pub value: bool,
 }
@@ -99,7 +99,7 @@ impl Inspector for Boolean {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Null {}
 
 impl Inspector for Null {
@@ -112,7 +112,7 @@ impl Inspector for Null {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ReturnValue {
     pub value: Box<Object>,
 }
@@ -135,7 +135,7 @@ impl Inspector for ReturnValue {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct RuntimeError {
     pub message: String,
 }

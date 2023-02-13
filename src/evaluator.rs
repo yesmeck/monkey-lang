@@ -1,14 +1,17 @@
-use crate::ast::{BlockStatement, Expression, IfExpression, Node, Program, Statement};
+use crate::ast::{BlockStatement, Expression, Identifier, IfExpression, Node, Program, Statement};
+use crate::enviroment::Enviroment;
 use crate::object::{Boolean, Inspector, Integer, Null, Object, ReturnValue, RuntimeError};
 
-pub struct Evaluator {}
+pub struct Evaluator<'a> {
+    env: &'a mut Enviroment,
+}
 
-impl Evaluator {
-    pub fn new() -> Self {
-        Self {}
+impl<'a> Evaluator<'a> {
+    pub fn new(env: &'a mut Enviroment) -> Self {
+        Self { env }
     }
 
-    pub fn eval(&self, ast: Node) -> Object {
+    pub fn eval(&mut self, ast: Node) -> Object {
         match ast {
             Node::Program(node) => self.eval_program(node),
             // Node::Statement(node) => eval(ast)
@@ -25,7 +28,19 @@ impl Evaluator {
                 }
             }
 
+            Node::Statement(Statement::Let(node)) => {
+                let value = self.eval(Node::Expression(&node.value));
+                if self.is_error(&value) {
+                    value
+                } else {
+                    self.env.set(node.name.value.to_owned(), value.clone());
+                    value
+                }
+            }
+
             Node::BlockStatement(node) => self.eval_block_statement(node),
+
+            Node::Expression(Expression::Identifier(node)) => self.eval_indentifier(node),
 
             Node::Expression(Expression::IntegerLiteral(node)) => {
                 Object::Integer(Integer::new(node.value))
@@ -66,7 +81,7 @@ impl Evaluator {
         }
     }
 
-    fn eval_program(&self, program: &Program) -> Object {
+    fn eval_program(&mut self, program: &Program) -> Object {
         let mut result = Object::Null(Null {});
 
         for stmt in program.statements.iter() {
@@ -82,7 +97,7 @@ impl Evaluator {
         result
     }
 
-    fn eval_block_statement(&self, block: &BlockStatement) -> Object {
+    fn eval_block_statement(&mut self, block: &BlockStatement) -> Object {
         let mut result = Object::Null(Null {});
 
         for stmt in block.statements.iter() {
@@ -98,7 +113,7 @@ impl Evaluator {
         result
     }
 
-    fn eval_prefix_expression(&self, operator: String, right: Object) -> Object {
+    fn eval_prefix_expression(&mut self, operator: String, right: Object) -> Object {
         match operator.as_str() {
             "!" => self.eval_bang_operator_expression(right),
             "-" => self.eval_minux_operator_expression(right),
@@ -192,7 +207,7 @@ impl Evaluator {
         }
     }
 
-    fn eval_if_expression(&self, ie: &IfExpression) -> Object {
+    fn eval_if_expression(&mut self, ie: &IfExpression) -> Object {
         let condition = self.eval(Node::Expression(&ie.condition));
 
         if self.is_error(&condition) {
@@ -206,6 +221,17 @@ impl Evaluator {
         }
 
         Object::Null(Null {})
+    }
+
+    fn eval_indentifier(&self, node: &Identifier) -> Object {
+        if let Some(value) = self.env.get(node.value.to_owned()) {
+            value.clone()
+        } else {
+            Object::RuntimeError(RuntimeError::new(format!(
+                "identifier not found: {}",
+                node.value
+            )))
+        }
     }
 
     fn native_bool_to_boolean_object(&self, input: bool) -> Object {
@@ -225,10 +251,7 @@ impl Evaluator {
     }
 
     fn is_error(&self, object: &Object) -> bool {
-        match object {
-            Object::RuntimeError(_) => true,
-            _ => false,
-        }
+        matches!(object, Object::RuntimeError(_))
     }
 }
 
@@ -237,16 +260,18 @@ mod tests {
     use super::Evaluator;
     use crate::{
         ast::Node,
+        enviroment::Enviroment,
         lexer::Lexer,
-        object::{Boolean, Inspector, Null, Object},
+        object::{Inspector, Object},
         parser::Parser,
     };
 
     fn test_eval(input: &str) -> Object {
-        static evaluator: Evaluator = Evaluator {};
         let mut lexer = Lexer::new(input.into());
         let mut parser = Parser::new(&mut lexer);
+        let mut env = Enviroment::new();
         let program = parser.parse_program();
+        let mut evaluator = Evaluator::new(&mut env);
         evaluator.eval(Node::Program(&program))
     }
 
@@ -267,7 +292,7 @@ mod tests {
     }
 
     fn test_null_object(object: Object) {
-        assert!(matches!(object, Object::Null(Null)))
+        assert!(matches!(object, Object::Null(_)))
     }
 
     #[test]
@@ -406,6 +431,7 @@ mod tests {
                 }",
                 "unknown operator: BOOLEAN + BOOLEAN",
             ),
+            ("foobar", "identifier not found: foobar"),
         ];
 
         for (input, output) in tests.iter() {
@@ -417,6 +443,20 @@ mod tests {
             } else {
                 panic!("not a error")
             }
+        }
+    }
+
+    #[test]
+    fn test_let_statements() {
+        let tests = [
+            ("let a = 5; a;", 5),
+            ("let a = 5 * 5; a;", 25),
+            ("let a = 5; let b = a; b;", 5),
+            ("let a = 5; let b = a; let c = a + b + 5; c;", 15),
+        ];
+
+        for (input, output) in tests.iter() {
+            test_integer_object(test_eval(input), *output);
         }
     }
 }
