@@ -2,19 +2,10 @@ use std::{collections::HashMap, rc::Rc, cell::RefCell};
 
 use crate::object::Object;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct Enviroment {
     store: HashMap<String, Object>,
     pub outer: Option<Rc<RefCell<Enviroment>>>,
-}
-
-impl Default for Enviroment {
-    fn default() -> Self {
-        Self {
-            store: HashMap::new(),
-            outer: None
-        }
-    }
 }
 
 impl Enviroment {

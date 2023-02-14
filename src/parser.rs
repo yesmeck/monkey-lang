@@ -68,7 +68,7 @@ impl<'a> Parser<'a> {
 
     fn parse_expression_statement(&mut self) -> Option<Statement> {
         if let Some(expression) = self.parse_expression(LOWEST) {
-            let stmt = Statement::Expression(ExpressionStatement { expression });
+            let stmt = Statement::Expression(ExpressionStatement::new(expression));
 
             if self.peek_token_is(&TokenKind::Semicolon) {
                 self.next_token();
@@ -105,9 +105,9 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_integer_literal(&mut self) -> Option<Expression> {
-        Some(Expression::IntegerLiteral(IntegerLiteral {
-            value: self.cur_token.1.parse::<i64>().unwrap(),
-        }))
+        Some(Expression::IntegerLiteral(IntegerLiteral::new(
+            self.cur_token.1.parse::<i64>().unwrap(),
+        )))
     }
 
     fn parse_function_literal(&mut self) -> Option<Expression> {
@@ -538,12 +538,12 @@ return y;
             assert_eq!(parser.errors.len(), 0);
             assert_eq!(
                 program.statements,
-                vec![Statement::Expression(ExpressionStatement {
-                    expression: Expression::Prefix(PrefixExpression::new(
+                vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::Prefix(PrefixExpression::new(
                         operator.to_string(),
                         Expression::IntegerLiteral(IntegerLiteral::new(*value))
                     ))
-                })]
+                ))]
             );
         }
     }
@@ -569,15 +569,13 @@ return y;
             assert_eq!(parser.errors.len(), 0);
             assert_eq!(
                 program.statements,
-                vec![Statement::Expression(ExpressionStatement {
-                    expression: Expression::Infix(InfixExpression {
+                vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::Infix(InfixExpression {
                         operator: operator.to_string(),
-                        left: Box::new(Expression::IntegerLiteral(IntegerLiteral { value: *left })),
-                        right: Box::new(Expression::IntegerLiteral(IntegerLiteral {
-                            value: *right
-                        }))
+                        left: Box::new(Expression::IntegerLiteral(IntegerLiteral::new(*left))),
+                        right: Box::new(Expression::IntegerLiteral(IntegerLiteral::new(*right)))
                     })
-                })]
+                ))]
             );
         }
     }
@@ -641,8 +639,8 @@ return y;
         assert_eq!(
             program,
             Program {
-                statements: vec![Statement::Expression(ExpressionStatement {
-                    expression: Expression::If(IfExpression {
+                statements: vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::If(IfExpression {
                         condition: Box::new(Expression::Infix(InfixExpression {
                             operator: "<".into(),
                             left: Box::new(Expression::Identifier(Identifier {
@@ -667,7 +665,7 @@ return y;
                             })]
                         })
                     })
-                })]
+                ))]
             }
         );
     }
@@ -723,7 +721,7 @@ return y;
                     expression: Expression::Call(CallExpression::new(
                         Expression::Identifier(Identifier::new("add".into())),
                         vec![
-                            Expression::IntegerLiteral(IntegerLiteral { value: 1 }),
+                            Expression::IntegerLiteral(IntegerLiteral::new(1)),
                             Expression::Infix(InfixExpression::new(
                                 "*".into(),
                                 Expression::IntegerLiteral(IntegerLiteral::new(2)),

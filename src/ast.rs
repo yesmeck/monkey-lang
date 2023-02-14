@@ -3,9 +3,7 @@ use std::fmt::Display;
 pub enum Node<'a> {
     Program(&'a Program),
     Statement(&'a Statement),
-    LetStatement(&'a LetStatement),
     BlockStatement(&'a BlockStatement),
-    ExpressionStatement(&'a ExpressionStatement),
     Expression(&'a Expression),
 }
 
@@ -33,7 +31,7 @@ pub struct LetStatement {
 }
 
 impl LetStatement {
-    pub fn new(name: Identifier, value: Expression)  -> Self {
+    pub fn new(name: Identifier, value: Expression) -> Self {
         Self { name, value }
     }
 }
@@ -330,13 +328,13 @@ mod tests {
     #[test]
     fn test_print_program() {
         let program = Program {
-            statements: vec![Statement::Expression(ExpressionStatement {
-                expression: Expression::Infix(InfixExpression {
+            statements: vec![Statement::Expression(ExpressionStatement::new(
+                Expression::Infix(InfixExpression {
                     operator: "+".into(),
-                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral { value: 1 })),
-                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral { value: 1 })),
+                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral::new(1))),
+                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral::new(1))),
                 }),
-            })],
+            ))],
         };
 
         assert_eq!(format!("{}", program), "(1 + 1)");

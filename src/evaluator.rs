@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::mem;
 use std::rc::Rc;
 
 use crate::ast::{BlockStatement, Expression, Identifier, IfExpression, Node, Program, Statement};
@@ -94,7 +93,7 @@ impl Evaluator {
             Node::Expression(Expression::If(node)) => self.eval_if_expression(node),
 
             Node::Expression(Expression::Call(node)) => {
-                let func = self.eval(Node::Expression(&*node.function));
+                let func = self.eval(Node::Expression(&node.function));
 
                 if self.is_error(&func) {
                     return func;
@@ -110,8 +109,6 @@ impl Evaluator {
                     Object::RuntimeError(RuntimeError::new("Not a function".into()))
                 }
             }
-
-            _ => Object::Null(Null {}),
         }
     }
 
@@ -297,7 +294,7 @@ impl Evaluator {
 
     fn eval_indentifier(&self, node: &Identifier) -> Object {
         if let Some(value) = self.env.borrow().get(node.value.to_owned()) {
-            value.clone()
+            value
         } else {
             Object::RuntimeError(RuntimeError::new(format!(
                 "identifier not found: {}",
@@ -341,7 +338,7 @@ mod tests {
     fn test_eval(input: &str) -> Object {
         let mut lexer = Lexer::new(input.into());
         let mut parser = Parser::new(&mut lexer);
-        let mut env = Enviroment::default();
+        let env = Enviroment::default();
         let program = parser.parse_program();
         let mut evaluator = Evaluator::new(env);
         evaluator.eval(Node::Program(&program))
