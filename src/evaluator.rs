@@ -1,14 +1,22 @@
+use std::cell::RefCell;
+use std::mem;
+use std::rc::Rc;
+
 use crate::ast::{BlockStatement, Expression, Identifier, IfExpression, Node, Program, Statement};
 use crate::enviroment::Enviroment;
-use crate::object::{Boolean, Inspector, Integer, Null, Object, ReturnValue, RuntimeError};
+use crate::object::{
+    Boolean, Function, Inspector, Integer, Null, Object, ReturnValue, RuntimeError,
+};
 
-pub struct Evaluator<'a> {
-    env: &'a mut Enviroment,
+pub struct Evaluator {
+    env: Rc<RefCell<Enviroment>>,
 }
 
-impl<'a> Evaluator<'a> {
-    pub fn new(env: &'a mut Enviroment) -> Self {
-        Self { env }
+impl Evaluator {
+    pub fn new(env: Enviroment) -> Self {
+        Self {
+            env: Rc::new(RefCell::new(env)),
+        }
     }
 
     pub fn eval(&mut self, ast: Node) -> Object {
@@ -33,7 +41,9 @@ impl<'a> Evaluator<'a> {
                 if self.is_error(&value) {
                     value
                 } else {
-                    self.env.set(node.name.value.to_owned(), value.clone());
+                    self.env
+                        .borrow_mut()
+                        .set(node.name.value.to_owned(), value.clone());
                     value
                 }
             }
@@ -49,6 +59,12 @@ impl<'a> Evaluator<'a> {
             Node::Expression(Expression::Boolean(node)) => {
                 self.native_bool_to_boolean_object(node.value)
             }
+
+            Node::Expression(Expression::FunctionLiteral(node)) => Object::Function(Function::new(
+                node.parameters.to_owned(),
+                node.body.to_owned(),
+                Rc::clone(&self.env),
+            )),
 
             Node::Expression(Expression::Prefix(node)) => {
                 let right = self.eval(Node::Expression(node.right.as_ref()));
@@ -77,7 +93,49 @@ impl<'a> Evaluator<'a> {
 
             Node::Expression(Expression::If(node)) => self.eval_if_expression(node),
 
+            Node::Expression(Expression::Call(node)) => {
+                let func = self.eval(Node::Expression(&*node.function));
+
+                if self.is_error(&func) {
+                    return func;
+                }
+
+                if let Object::Function(func) = func {
+                    let args = self.eval_expression(node.arguments.clone());
+                    if args.len() == 1 && self.is_error(&args[0]) {
+                        return args[0].clone();
+                    }
+                    self.apply_function(&func, args)
+                } else {
+                    Object::RuntimeError(RuntimeError::new("Not a function".into()))
+                }
+            }
+
             _ => Object::Null(Null {}),
+        }
+    }
+
+    fn apply_function(&mut self, func: &Function, args: Vec<Object>) -> Object {
+        let old_env = Rc::clone(&self.env);
+        self.extend_function_env(func, args);
+        let return_value = self.eval(Node::BlockStatement(&func.body));
+        self.env = old_env;
+        self.unwrap_return_value(return_value)
+    }
+
+    fn extend_function_env(&mut self, func: &Function, args: Vec<Object>) {
+        let mut env = Enviroment::new(Some(Rc::clone(&func.env)));
+        for (i, param) in func.parameters.iter().enumerate() {
+            env.set(param.value.to_owned(), args[i].to_owned());
+        }
+        self.env = Rc::new(RefCell::new(env));
+    }
+
+    fn unwrap_return_value(&self, obj: Object) -> Object {
+        if let Object::ReturnValue(return_value) = obj {
+            *return_value.value
+        } else {
+            obj
         }
     }
 
@@ -92,6 +150,20 @@ impl<'a> Evaluator<'a> {
                 Object::RuntimeError(_) => return result,
                 _ => {}
             }
+        }
+
+        result
+    }
+
+    fn eval_expression(&mut self, exps: Vec<Expression>) -> Vec<Object> {
+        let mut result: Vec<_> = vec![];
+
+        for exp in exps.iter() {
+            let evaluated = self.eval(Node::Expression(exp));
+            if self.is_error(&evaluated) {
+                return vec![evaluated];
+            }
+            result.push(evaluated);
         }
 
         result
@@ -224,7 +296,7 @@ impl<'a> Evaluator<'a> {
     }
 
     fn eval_indentifier(&self, node: &Identifier) -> Object {
-        if let Some(value) = self.env.get(node.value.to_owned()) {
+        if let Some(value) = self.env.borrow().get(node.value.to_owned()) {
             value.clone()
         } else {
             Object::RuntimeError(RuntimeError::new(format!(
@@ -269,9 +341,9 @@ mod tests {
     fn test_eval(input: &str) -> Object {
         let mut lexer = Lexer::new(input.into());
         let mut parser = Parser::new(&mut lexer);
-        let mut env = Enviroment::new();
+        let mut env = Enviroment::default();
         let program = parser.parse_program();
-        let mut evaluator = Evaluator::new(&mut env);
+        let mut evaluator = Evaluator::new(env);
         evaluator.eval(Node::Program(&program))
     }
 
@@ -397,7 +469,7 @@ mod tests {
             (
                 "if (10 > 1) {
                     if (10 > 1) {
-                        return 10; 
+                        return 10;
                     }
                     return 1;
                 }",
@@ -427,7 +499,7 @@ mod tests {
                   if (10 > 1) {
                     return true + false;
                   }
-                  return 1; 
+                  return 1;
                 }",
                 "unknown operator: BOOLEAN + BOOLEAN",
             ),
@@ -458,5 +530,48 @@ mod tests {
         for (input, output) in tests.iter() {
             test_integer_object(test_eval(input), *output);
         }
+    }
+
+    #[test]
+    fn test_function_object() {
+        let input = "fn(x) { x + 2 };";
+        let evaluated = test_eval(input);
+
+        if let Object::Function(object) = evaluated {
+            assert_eq!(object.parameters.len(), 1);
+            assert_eq!(object.parameters[0].value, "x".to_string());
+            assert_eq!(format!("{}", object.body), "(x + 2)");
+        } else {
+            panic!("not a function")
+        }
+    }
+
+    #[test]
+    fn test_function_application() {
+        let tests = [
+            ("let identity = fn(x) { x; }; identity(5);", 5),
+            ("let identity = fn(x) { return x; }; identity(5);", 5),
+            ("let double = fn(x) { x * 2; }; double(5);", 10),
+            ("let add = fn(x, y) { x + y; }; add(5, 5);", 10),
+            ("let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20),
+            ("fn(x) { x; }(5)", 5),
+        ];
+
+        for (input, output) in tests.iter() {
+            test_integer_object(test_eval(input), *output);
+        }
+    }
+
+    #[test]
+    fn test_closures() {
+        let input = "
+            let newAdder = fn(x) {
+                fn(y) { x + y };
+            };
+            let addTwo = newAdder(2);
+            addTwo(2);
+        ";
+
+        test_integer_object(test_eval(input), 4);
     }
 }

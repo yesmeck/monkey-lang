@@ -38,8 +38,8 @@ impl Repl {
 
     pub fn start(&self) {
         self.prompt();
-        let mut env = Enviroment::new();
-        let mut evaluator = Evaluator::new(&mut env);
+        let env = Enviroment::default();
+        let mut evaluator = Evaluator::new(env);
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             let mut lexer = Lexer::new(line.unwrap());
