@@ -1,13 +1,15 @@
-use crate::object::{Integer, Null, Object, RuntimeError};
+use crate::object::{Array, Integer, Null, Object, RuntimeError};
 
 #[derive(Debug)]
 pub struct Builtin<'a> {
-    functions: [&'a str; 3],
+    functions: [&'a str; 4],
 }
 
 impl<'a> Builtin<'a> {
     pub fn new() -> Self {
-        Self { functions: ["len", "first", "last"] }
+        Self {
+            functions: ["len", "first", "last", "rest"],
+        }
     }
 
     pub fn function_exists(&self, func: &str) -> bool {
@@ -19,6 +21,7 @@ impl<'a> Builtin<'a> {
             "len" => Some(self.len(args)),
             "first" => Some(self.first(args)),
             "last" => Some(self.last(args)),
+            "rest" => Some(self.rest(args)),
             _ => None,
         }
     }
@@ -76,6 +79,25 @@ impl<'a> Builtin<'a> {
                 .last()
                 .unwrap_or(&Object::Null(Null::default()))
                 .clone(),
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "argument to `last` must be ARRAY, got {}",
+                args[0].kind()
+            ))),
+        }
+    }
+
+    pub fn rest(&self, args: Vec<Object>) -> Object {
+        if args.len() != 1 {
+            return Object::RuntimeError(RuntimeError::new(format!(
+                "wrong number of arguments. got={}, want=1",
+                args.len()
+            )));
+        }
+
+        match args[0] {
+            Object::Array(ref array) => Object::Array(Array::new(
+                array.elements[1..].into())
+            ),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "argument to `last` must be ARRAY, got {}",
                 args[0].kind()

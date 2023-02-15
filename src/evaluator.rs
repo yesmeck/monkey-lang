@@ -140,7 +140,14 @@ impl<'a> Evaluator<'a> {
                         if args.len() == 1 && self.is_error(&args[0]) {
                             return args[0].clone();
                         }
-                        self.builtin.try_function(&func.name, args).unwrap()
+                        if let Some(result) = self.builtin.try_function(&func.name, args) {
+                            result
+                        } else {
+                            Object::RuntimeError(RuntimeError::new(format!(
+                                "Not a function: {}",
+                                func.name,
+                            )))
+                        }
                     }
                     _ => Object::RuntimeError(RuntimeError::new(format!(
                         "Not a function: {}",
@@ -708,6 +715,16 @@ mod tests {
 
         for (input, output) in error_tests.iter() {
             test_error_object(test_eval(input), output.to_string());
+        }
+    }
+
+    #[test]
+    fn test_rest_function() {
+        let tests = [(r#"rest([1, 2, 3])"#, "[2, 3]"), (r#"rest([2, 3])"#, "[3]")];
+
+        for (input, output) in tests.iter() {
+            println!("{} => {}", input, output);
+            assert_eq!(test_eval(input).inspect(), *output);
         }
     }
 
