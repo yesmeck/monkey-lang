@@ -691,6 +691,7 @@ mod tests {
             (r#"len("four")"#, 4),
             (r#"len("hello world")"#, 11),
             (r#"len([1, 2, 3])"#, 3),
+            (r#"first([1, 2, 3])"#, 1),
         ];
         let error_tests = [
             (r#"len(1)"#, "argument to `len` not supported, got INTEGER"),
