@@ -8,6 +8,7 @@ use crate::{
 #[derive(Debug, PartialEq)]
 pub enum ObjectKind {
     Integer,
+    Str,
     Boolean,
     Null,
     ReturnValue,
@@ -19,6 +20,7 @@ impl Display for ObjectKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Integer => write!(f, "INTEGER"),
+            Self::Str => write!(f, "STRING"),
             Self::Boolean => write!(f, "BOOLEAN"),
             Self::Null => write!(f, "NULL"),
             Self::ReturnValue => write!(f, "RETURN VALUE"),
@@ -31,6 +33,7 @@ impl Display for ObjectKind {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Integer(Integer),
+    Str(Str),
     Boolean(Boolean),
     Null(Null),
     ReturnValue(ReturnValue),
@@ -42,6 +45,7 @@ impl Object {
     pub fn kind(&self) -> ObjectKind {
         match self {
             Self::Integer(o) => o.kind(),
+            Self::Str(o) => o.kind(),
             Self::Boolean(o) => o.kind(),
             Self::Null(o) => o.kind(),
             Self::ReturnValue(o) => o.kind(),
@@ -53,6 +57,7 @@ impl Object {
     pub fn inspect(&self) -> String {
         match self {
             Self::Integer(o) => o.inspect(),
+            Self::Str(o) => o.inspect(),
             Self::Boolean(o) => o.inspect(),
             Self::Null(o) => o.inspect(),
             Self::ReturnValue(o) => o.inspect(),
@@ -87,6 +92,26 @@ impl Inspector for Integer {
         self.value.to_string()
     }
 }
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Str {
+    pub value: String
+}
+
+impl Str {
+    pub fn new(value: String) -> Self { Self { value } }
+}
+
+impl Inspector for Str {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Str
+    }
+
+    fn inspect(&self) -> String {
+        self.value.to_string()
+    }
+}
+
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Boolean {

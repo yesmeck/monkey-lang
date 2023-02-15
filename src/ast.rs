@@ -99,6 +99,7 @@ impl Display for BlockStatement {
 pub enum Expression {
     Identifier(Identifier),
     IntegerLiteral(IntegerLiteral),
+    StringLiteral(StringLiteral),
     FunctionLiteral(FunctionLiteral),
     Boolean(BooleanExpression),
     Prefix(PrefixExpression),
@@ -112,6 +113,7 @@ impl Display for Expression {
         match self {
             Self::Identifier(e) => write!(f, "{}", e),
             Self::IntegerLiteral(e) => write!(f, "{}", e),
+            Self::StringLiteral(e) => write!(f, "{}", e),
             Self::FunctionLiteral(e) => write!(f, "{}", e),
             Self::Boolean(e) => write!(f, "{}", e),
             Self::Prefix(e) => write!(f, "{}", e),
@@ -151,6 +153,23 @@ impl IntegerLiteral {
 }
 
 impl Display for IntegerLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct StringLiteral {
+    pub value: String,
+}
+
+impl StringLiteral {
+    pub fn new(value: String) -> Self {
+        Self { value }
+    }
+}
+
+impl Display for StringLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
     }

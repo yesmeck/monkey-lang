@@ -60,6 +60,7 @@ impl Lexer {
             Some(',') => Token(TokenKind::Comma, ",".into()),
             Some('{') => Token(TokenKind::Lbrace, "{".into()),
             Some('}') => Token(TokenKind::Rbrace, "}".into()),
+            Some('"') => Token(TokenKind::String, self.read_string().into()),
             None => Token(TokenKind::EOF, "\n".into()),
             Some(ch) => {
                 if self.is_letter(Some(ch)) {
@@ -106,16 +107,31 @@ impl Lexer {
         self.input[position..self.position].into()
     }
 
+    fn read_string(&mut self) -> &str {
+        let position = self.position + 1;
+        loop {
+            self.read_char();
+            if let Some(ch) = self.ch {
+                if ch == '"'  {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        self.input[position..self.position].into()
+    }
+
     fn is_letter(&self, ch: Option<char>) -> bool {
         if let Some(ch) = ch {
-            return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+            return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_';
         }
         false
     }
 
     fn is_digital(&self, ch: Option<char>) -> bool {
         if let Some(ch) = ch {
-            return '0' <= ch && ch <= '9'
+            return '0' <= ch && ch <= '9';
         }
         false
     }
@@ -172,6 +188,8 @@ if (5 < 10) {
 
 10 == 10; 
 10 != 9;
+\"foobar\"
+\"foo bar\"
 ";
         let mut lexer = Lexer::new(input.into());
 
@@ -249,6 +267,8 @@ if (5 < 10) {
             Token(TokenKind::NotEq, "!=".into()),
             Token(TokenKind::Int, "9".into()),
             Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::String, "foobar".into()),
+            Token(TokenKind::String, "foo bar".into()),
             Token(TokenKind::EOF, "\n".into()),
         ];
 

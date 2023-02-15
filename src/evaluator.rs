@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::ast::{BlockStatement, Expression, Identifier, IfExpression, Node, Program, Statement};
 use crate::enviroment::Enviroment;
 use crate::object::{
-    Boolean, Function, Inspector, Integer, Null, Object, ReturnValue, RuntimeError,
+    Boolean, Function, Inspector, Integer, Null, Object, ReturnValue, RuntimeError, Str
 };
 
 pub struct Evaluator {
@@ -53,6 +53,10 @@ impl Evaluator {
 
             Node::Expression(Expression::IntegerLiteral(node)) => {
                 Object::Integer(Integer::new(node.value))
+            }
+
+            Node::Expression(Expression::StringLiteral(node)) => {
+                Object::Str(Str::new(node.value.to_owned()))
             }
 
             Node::Expression(Expression::Boolean(node)) => {
@@ -352,6 +356,15 @@ mod tests {
         }
     }
 
+    fn test_string_object(object: Object, expected: String) {
+        if let Object::Str(string) = object {
+            assert_eq!(string.value, expected);
+        } else {
+            panic!("not a string");
+        }
+    }
+
+
     fn test_boolean_object(object: Object, expected: bool) {
         if let Object::Boolean(bool) = object {
             assert_eq!(bool.value, expected);
@@ -570,5 +583,12 @@ mod tests {
         ";
 
         test_integer_object(test_eval(input), 4);
+    }
+
+    #[test]
+    fn test_string_literal() {
+        let input = "\"Hello world!\"";
+
+        test_string_object(test_eval(input), "Hello world!".into());
     }
 }

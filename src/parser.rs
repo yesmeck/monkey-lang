@@ -4,7 +4,7 @@ use crate::{
     ast::{
         BlockStatement, BooleanExpression, CallExpression, Expression, ExpressionStatement,
         FunctionLiteral, Identifier, IfExpression, InfixExpression, IntegerLiteral, LetStatement,
-        PrefixExpression, Program, ReturnStatement, Statement,
+        PrefixExpression, Program, ReturnStatement, Statement, StringLiteral,
     },
     lexer::Lexer,
     token::{Token, TokenKind},
@@ -107,6 +107,12 @@ impl<'a> Parser<'a> {
     fn parse_integer_literal(&mut self) -> Option<Expression> {
         Some(Expression::IntegerLiteral(IntegerLiteral::new(
             self.cur_token.1.parse::<i64>().unwrap(),
+        )))
+    }
+
+    fn parse_string_literal(&mut self) -> Option<Expression> {
+        Some(Expression::StringLiteral(StringLiteral::new(
+            self.cur_token.1.to_owned()
         )))
     }
 
@@ -360,6 +366,7 @@ impl<'a> Parser<'a> {
         match self.cur_token.0 {
             TokenKind::Ident => self.parse_identifier(),
             TokenKind::Int => self.parse_integer_literal(),
+            TokenKind::String => self.parse_string_literal(),
             TokenKind::Function => self.parse_function_literal(),
             TokenKind::Lparen => self.parse_grouped_expression(),
             TokenKind::If => self.parse_if_expression(),
@@ -414,7 +421,7 @@ mod tests {
         ast::{
             BlockStatement, BooleanExpression, CallExpression, Expression, ExpressionStatement,
             FunctionLiteral, Identifier, IfExpression, InfixExpression, IntegerLiteral,
-            LetStatement, PrefixExpression, Program, ReturnStatement, Statement,
+            LetStatement, PrefixExpression, Program, ReturnStatement, Statement, StringLiteral,
         },
         lexer::Lexer,
     };
@@ -737,5 +744,27 @@ return y;
                 })]
             }
         );
+    }
+
+    #[test]
+    fn test_string_literal_expression() {
+        let input = "\"hello world!\"";
+
+        let mut lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(
+        program,
+        Program {
+                statements: vec![
+                    Statement::Expression(ExpressionStatement::new(
+                        Expression::StringLiteral(
+                            StringLiteral::new("hello world!".into())
+                        )
+                    ))
+                ]
+            }
+    );
     }
 }
