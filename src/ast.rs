@@ -101,6 +101,7 @@ pub enum Expression {
     IntegerLiteral(IntegerLiteral),
     StringLiteral(StringLiteral),
     ArrayLiteral(ArrayLiteral),
+    HashLiteral(HashLiteral),
     FunctionLiteral(FunctionLiteral),
     Boolean(BooleanExpression),
     Prefix(PrefixExpression),
@@ -117,6 +118,7 @@ impl Display for Expression {
             Self::IntegerLiteral(e) => write!(f, "{}", e),
             Self::StringLiteral(e) => write!(f, "{}", e),
             Self::ArrayLiteral(e) => write!(f, "{}", e),
+            Self::HashLiteral(e) => write!(f, "{}", e),
             Self::FunctionLiteral(e) => write!(f, "{}", e),
             Self::Boolean(e) => write!(f, "{}", e),
             Self::Prefix(e) => write!(f, "{}", e),
@@ -201,6 +203,49 @@ impl Display for ArrayLiteral {
                 .collect::<Vec<String>>()
                 .join(", ")
         )
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct HashLiteral {
+    pub members: Vec<HashMember>,
+}
+
+impl HashLiteral {
+    pub fn new(members: Vec<HashMember>) -> Self {
+        Self { members }
+    }
+}
+
+impl Display for HashLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{{}}}",
+            self.members
+                .iter()
+                .map(|m| format!("{m}"))
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct HashMember {
+    pub key: Expression,
+    pub value: Expression,
+}
+
+impl HashMember {
+    pub fn new(key: Expression, value: Expression) -> Self {
+        Self { key, value }
+    }
+}
+
+impl Display for HashMember {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.key, self.value)
     }
 }
 

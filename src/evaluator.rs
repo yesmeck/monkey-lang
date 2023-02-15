@@ -1,12 +1,15 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::ast::{BlockStatement, Expression, Identifier, IfExpression, Node, Program, Statement};
+use crate::ast::{
+    BlockStatement, Expression, HashLiteral, Identifier, IfExpression, Node, Program, Statement,
+};
 use crate::builtin::Builtin;
 use crate::enviroment::Enviroment;
 use crate::object::{
-    Array, Boolean, BuiltinFunction, Function, Inspector, Integer, Null, Object, ReturnValue,
-    RuntimeError, Str,
+    Array, Boolean, BuiltinFunction, Function, Hash, HashKeyable, Inspector, Integer, Null, Object,
+    ReturnValue, RuntimeError, Str,
 };
 
 pub struct Evaluator<'a> {
@@ -70,6 +73,8 @@ impl<'a> Evaluator<'a> {
                 }
                 Object::Array(Array::new(elements))
             }
+
+            Node::Expression(Expression::HashLiteral(node)) => self.eval_hash_literal(node),
 
             Node::Expression(Expression::Index(node)) => {
                 let left = self.eval(Node::Expression(&node.left));
@@ -343,6 +348,37 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    fn eval_hash_literal(&mut self, node: &HashLiteral) -> Object {
+        let mut hash_value = HashMap::new();
+
+        for member in node.members.iter() {
+            let key = self.eval(Node::Expression(&member.key));
+
+            if self.is_error(&key) {
+                return key;
+            }
+
+            let hash_key = match key {
+                Object::Str(o) => o.hash_key(),
+                Object::Integer(o) => o.hash_key(),
+                Object::Boolean(o) => o.hash_key(),
+                _ => return Object::RuntimeError(RuntimeError::new(format!(
+                    "only string, integer and boolean can be hash key, found {}",
+                    key.kind()
+                ))),
+            };
+
+            let value = self.eval(Node::Expression(&member.value));
+
+            if self.is_error(&value) {
+                return value;
+            }
+            hash_value.insert(hash_key.stringify(), value);
+        }
+
+        Object::Hash(Hash::new(hash_value))
+    }
+
     fn eval_bang_operator_expression(&self, right: Object) -> Object {
         match right {
             Object::Boolean(object) => {
@@ -419,12 +455,14 @@ impl<'a> Evaluator<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::Evaluator;
     use crate::{
         ast::Node,
         enviroment::Enviroment,
         lexer::Lexer,
-        object::{Inspector, Object},
+        object::{HashKeyable, Inspector, Integer, Object, Str, Boolean},
         parser::Parser,
     };
 
@@ -767,6 +805,54 @@ mod tests {
 
         for input in null_tests {
             test_null_object(test_eval(input));
+        }
+    }
+
+    #[test]
+    fn test_hash_literals() {
+        let input = r#"
+            let two = "two";
+            {
+              "one": 10 - 9,
+              two: 1 + 1,
+              "thr" + "ee": 6 / 2,
+              4: 4,
+              true: 5,
+              false: 6
+            }
+"#;
+        let evaluated = test_eval(input);
+
+        if let Object::Hash(hash) = evaluated {
+            let expected = HashMap::from([
+                (
+                    Str::new("one".into()).hash_key().stringify(),
+                    Object::Integer(Integer::new(1)),
+                ),
+                (
+                    Str::new("two".into()).hash_key().stringify(),
+                    Object::Integer(Integer::new(2)),
+                ),
+                (
+                    Str::new("three".into()).hash_key().stringify(),
+                    Object::Integer(Integer::new(3)),
+                ),
+                (
+                    Integer::new(4).hash_key().stringify(),
+                    Object::Integer(Integer::new(4)),
+                ),
+                (
+                    Boolean::new(true).hash_key().stringify(),
+                    Object::Integer(Integer::new(5)),
+                ),
+                (
+                    Boolean::new(false).hash_key().stringify(),
+                    Object::Integer(Integer::new(6)),
+                ),
+            ]);
+            assert_eq!(hash.value, expected);
+        } else {
+            panic!("not a hash")
         }
     }
 }

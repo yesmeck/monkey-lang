@@ -3,9 +3,9 @@ use std::mem::swap;
 use crate::{
     ast::{
         ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
-        ExpressionStatement, FunctionLiteral, Identifier, IfExpression, IndexExpression,
-        InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
-        Statement, StringLiteral,
+        ExpressionStatement, FunctionLiteral, HashLiteral, HashMember, Identifier, IfExpression,
+        IndexExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program,
+        ReturnStatement, Statement, StringLiteral,
     },
     lexer::Lexer,
     token::{Token, TokenKind},
@@ -122,6 +122,36 @@ impl<'a> Parser<'a> {
         Some(Expression::ArrayLiteral(ArrayLiteral::new(
             self.parse_expression_list(TokenKind::Rbracket),
         )))
+    }
+
+    fn parse_hash_literal(&mut self) -> Option<Expression> {
+        let mut members: Vec<_> = vec![];
+
+        while !self.peek_token_is(&TokenKind::Rbrace) {
+            self.next_token();
+
+            let key = self.parse_expression(LOWEST).unwrap();
+
+            if !self.expect_peek(TokenKind::Colon) {
+                continue;
+            }
+
+            self.next_token();
+
+            let value = self.parse_expression(LOWEST).unwrap();
+
+            members.push(HashMember::new(key, value));
+
+            if !self.peek_token_is(&TokenKind::Rbrace) && !self.expect_peek(TokenKind::Comma) {
+                return None
+            }
+        }
+
+        if !self.expect_peek(TokenKind::Rbrace) {
+            None
+        } else {
+            Some(Expression::HashLiteral(HashLiteral::new(members)))
+        }
     }
 
     fn parse_expression_list(&mut self, end_token: TokenKind) -> Vec<Expression> {
@@ -390,6 +420,7 @@ impl<'a> Parser<'a> {
             TokenKind::Function => self.parse_function_literal(),
             TokenKind::Lparen => self.parse_grouped_expression(),
             TokenKind::Lbracket => self.parse_array_literal(),
+            TokenKind::Lbrace => self.parse_hash_literal(),
             TokenKind::If => self.parse_if_expression(),
             TokenKind::True | TokenKind::False => self.parse_boolean(),
             TokenKind::Bang | TokenKind::Minus => self.parse_prefix_expression(),
@@ -443,9 +474,9 @@ mod tests {
     use crate::{
         ast::{
             ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
-            ExpressionStatement, FunctionLiteral, Identifier, IfExpression, IndexExpression,
-            InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program,
-            ReturnStatement, Statement, StringLiteral,
+            ExpressionStatement, FunctionLiteral, HashLiteral, HashMember, Identifier,
+            IfExpression, IndexExpression, InfixExpression, IntegerLiteral, LetStatement,
+            PrefixExpression, Program, ReturnStatement, Statement, StringLiteral,
         },
         lexer::Lexer,
     };
@@ -846,6 +877,98 @@ return y;
                             Expression::IntegerLiteral(IntegerLiteral::new(1)),
                         ))
                     ))
+                ))]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parsing_hash_literals_string_keys() {
+        let input = r#"{"one": 1, "two": 2, "three": 3}"#;
+
+        let mut lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(
+            program,
+            Program {
+                statements: vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::HashLiteral(HashLiteral::new(vec![
+                        HashMember::new(
+                            Expression::StringLiteral(StringLiteral::new("one".into())),
+                            Expression::IntegerLiteral(IntegerLiteral::new(1)),
+                        ),
+                        HashMember::new(
+                            Expression::StringLiteral(StringLiteral::new("two".into())),
+                            Expression::IntegerLiteral(IntegerLiteral::new(2)),
+                        ),
+                        HashMember::new(
+                            Expression::StringLiteral(StringLiteral::new("three".into())),
+                            Expression::IntegerLiteral(IntegerLiteral::new(3)),
+                        )
+                    ]))
+                ))]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parsing_empty_hash_literal() {
+        let input = "{}";
+
+        let mut lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(
+            program,
+            Program {
+                statements: vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::HashLiteral(HashLiteral::new(vec![]))
+                ))]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parsing_hash_literals_with_expressions() {
+        let input = r#"{"one": 0 + 1, "two": 10 - 8, "three": 15 / 5}"#;
+
+        let mut lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(
+            program,
+            Program {
+                statements: vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::HashLiteral(HashLiteral::new(vec![
+                        HashMember::new(
+                            Expression::StringLiteral(StringLiteral::new("one".into())),
+                            Expression::Infix(InfixExpression::new(
+                                "+".into(),
+                                Expression::IntegerLiteral(IntegerLiteral::new(0)),
+                                Expression::IntegerLiteral(IntegerLiteral::new(1)),
+                            ))
+                        ),
+                        HashMember::new(
+                            Expression::StringLiteral(StringLiteral::new("two".into())),
+                            Expression::Infix(InfixExpression::new(
+                                "-".into(),
+                                Expression::IntegerLiteral(IntegerLiteral::new(10)),
+                                Expression::IntegerLiteral(IntegerLiteral::new(8)),
+                            ))
+                        ),
+                        HashMember::new(
+                            Expression::StringLiteral(StringLiteral::new("three".into())),
+                            Expression::Infix(InfixExpression::new(
+                                "/".into(),
+                                Expression::IntegerLiteral(IntegerLiteral::new(15)),
+                                Expression::IntegerLiteral(IntegerLiteral::new(5)),
+                            ))
+                        )
+                    ]))
                 ))]
             }
         );

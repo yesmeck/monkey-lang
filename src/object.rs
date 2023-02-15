@@ -1,11 +1,13 @@
-use std::{cell::RefCell, fmt::Display, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, hash::Hasher, rc::Rc};
+
+use fxhash::FxHasher64;
 
 use crate::{
     ast::{BlockStatement, Identifier},
     enviroment::Enviroment,
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ObjectKind {
     Integer,
     Str,
@@ -16,6 +18,7 @@ pub enum ObjectKind {
     Function,
     BuiltinFunction,
     Array,
+    Hash,
 }
 
 impl Display for ObjectKind {
@@ -30,6 +33,7 @@ impl Display for ObjectKind {
             Self::Function => write!(f, "FUNCTION"),
             Self::BuiltinFunction => write!(f, "BUILTIN"),
             Self::Array => write!(f, "ARRAY"),
+            Self::Hash => write!(f, "HASH"),
         }
     }
 }
@@ -40,6 +44,7 @@ pub enum Object {
     Str(Str),
     Boolean(Boolean),
     Array(Array),
+    Hash(Hash),
     Null(Null),
     ReturnValue(ReturnValue),
     RuntimeError(RuntimeError),
@@ -54,6 +59,7 @@ impl Object {
             Self::Str(o) => o.kind(),
             Self::Boolean(o) => o.kind(),
             Self::Array(o) => o.kind(),
+            Self::Hash(o) => o.kind(),
             Self::Null(o) => o.kind(),
             Self::ReturnValue(o) => o.kind(),
             Self::RuntimeError(o) => o.kind(),
@@ -68,6 +74,7 @@ impl Object {
             Self::Str(o) => o.inspect(),
             Self::Boolean(o) => o.inspect(),
             Self::Array(o) => o.inspect(),
+            Self::Hash(o) => o.inspect(),
             Self::Null(o) => o.inspect(),
             Self::ReturnValue(o) => o.inspect(),
             Self::RuntimeError(o) => o.inspect(),
@@ -80,6 +87,10 @@ impl Object {
 pub trait Inspector {
     fn kind(&self) -> ObjectKind;
     fn inspect(&self) -> String;
+}
+
+pub trait HashKeyable {
+    fn hash_key(&self) -> HashKey;
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -100,6 +111,12 @@ impl Inspector for Integer {
 
     fn inspect(&self) -> String {
         self.value.to_string()
+    }
+}
+
+impl HashKeyable for Integer {
+    fn hash_key(&self) -> HashKey {
+        HashKey::new(ObjectKind::Integer, self.value)
     }
 }
 
@@ -124,6 +141,14 @@ impl Inspector for Str {
     }
 }
 
+impl HashKeyable for Str {
+    fn hash_key(&self) -> HashKey {
+        let mut hasher = FxHasher64::default();
+        hasher.write(self.value.as_bytes());
+        HashKey::new(ObjectKind::Str, hasher.finish() as i64)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Boolean {
     pub value: bool,
@@ -142,6 +167,16 @@ impl Inspector for Boolean {
 
     fn inspect(&self) -> String {
         self.value.to_string()
+    }
+}
+
+impl HashKeyable for Boolean {
+    fn hash_key(&self) -> HashKey {
+        let value = match self.value {
+            true => 1,
+            false => 0,
+        };
+        HashKey::new(ObjectKind::Boolean, value)
     }
 }
 
@@ -287,5 +322,49 @@ impl Inspector for Array {
                 .collect::<Vec<String>>()
                 .join(", "),
         )
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Hash {
+    pub value: HashMap<String, Object>,
+}
+
+impl Hash {
+    pub fn new(value: HashMap<String, Object>) -> Self {
+        Self { value }
+    }
+}
+
+impl Inspector for Hash {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Hash
+    }
+
+    fn inspect(&self) -> String {
+        format!(
+            "{{{}}}",
+            self.value
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, v.inspect()))
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct HashKey {
+    pub kind: ObjectKind,
+    pub value: i64,
+}
+
+impl HashKey {
+    pub fn new(kind: ObjectKind, value: i64) -> Self {
+        Self { kind, value }
+    }
+
+    pub fn stringify(&self) -> String {
+        format!("{}{}", self.kind, self.value)
     }
 }
