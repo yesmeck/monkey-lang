@@ -55,7 +55,7 @@ impl<'a> Builtin<'a> {
                 .unwrap_or(&Object::Null(Null::default()))
                 .clone(),
             _ => Object::RuntimeError(RuntimeError::new(format!(
-                "argument to `len` not supported, got {}",
+                "argument to `first` must be ARRAY, got {}",
                 args[0].kind()
             ))),
         }
