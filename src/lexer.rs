@@ -60,6 +60,8 @@ impl Lexer {
             Some(',') => Token(TokenKind::Comma, ",".into()),
             Some('{') => Token(TokenKind::Lbrace, "{".into()),
             Some('}') => Token(TokenKind::Rbrace, "}".into()),
+            Some('[') => Token(TokenKind::Lbracket, "[".into()),
+            Some(']') => Token(TokenKind::Rbracket, "]".into()),
             Some('"') => Token(TokenKind::String, self.read_string().into()),
             None => Token(TokenKind::Eof, "\n".into()),
             Some(ch) => {
@@ -190,6 +192,7 @@ if (5 < 10) {
 10 != 9;
 \"foobar\"
 \"foo bar\"
+[1, 2];
 ";
         let mut lexer = Lexer::new(input.into());
 
@@ -269,6 +272,12 @@ if (5 < 10) {
             Token(TokenKind::Semicolon, ";".into()),
             Token(TokenKind::String, "foobar".into()),
             Token(TokenKind::String, "foo bar".into()),
+            Token(TokenKind::Lbracket, "[".into()),
+            Token(TokenKind::Int, "1".into()),
+            Token(TokenKind::Comma, ",".into()),
+            Token(TokenKind::Int, "2".into()),
+            Token(TokenKind::Rbracket, "]".into()),
+            Token(TokenKind::Semicolon, ";".into()),
             Token(TokenKind::Eof, "\n".into()),
         ];
 

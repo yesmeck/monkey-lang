@@ -2,9 +2,10 @@ use std::mem::swap;
 
 use crate::{
     ast::{
-        BlockStatement, BooleanExpression, CallExpression, Expression, ExpressionStatement,
-        FunctionLiteral, Identifier, IfExpression, InfixExpression, IntegerLiteral, LetStatement,
-        PrefixExpression, Program, ReturnStatement, Statement, StringLiteral,
+        ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
+        ExpressionStatement, FunctionLiteral, Identifier, IfExpression, IndexExpression,
+        InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
+        Statement, StringLiteral,
     },
     lexer::Lexer,
     token::{Token, TokenKind},
@@ -17,6 +18,7 @@ const SUM: i8 = 4;
 const PRODUCT: i8 = 5;
 const PREFIX: i8 = 6;
 const CALL: i8 = 7;
+const INDEX: i8 = 8;
 
 #[derive(Debug)]
 pub struct Parser<'a> {
@@ -112,8 +114,39 @@ impl<'a> Parser<'a> {
 
     fn parse_string_literal(&mut self) -> Option<Expression> {
         Some(Expression::StringLiteral(StringLiteral::new(
-            self.cur_token.1.to_owned()
+            self.cur_token.1.to_owned(),
         )))
+    }
+
+    fn parse_array_literal(&mut self) -> Option<Expression> {
+        Some(Expression::ArrayLiteral(ArrayLiteral::new(
+            self.parse_expression_list(TokenKind::Rbracket),
+        )))
+    }
+
+    fn parse_expression_list(&mut self, end_token: TokenKind) -> Vec<Expression> {
+        let mut list: Vec<_> = vec![];
+
+        if self.peek_token_is(&end_token) {
+            self.next_token();
+            return list;
+        }
+
+        self.next_token();
+        list.push(self.parse_expression(LOWEST).unwrap());
+
+        while self.peek_token_is(&TokenKind::Comma) {
+            self.next_token();
+            self.next_token();
+
+            list.push(self.parse_expression(LOWEST).unwrap());
+        }
+
+        if !self.expect_peek(end_token) {
+            return vec![];
+        }
+
+        list
     }
 
     fn parse_function_literal(&mut self) -> Option<Expression> {
@@ -206,33 +239,20 @@ impl<'a> Parser<'a> {
     fn parse_call_expression(&mut self, function: Expression) -> Option<Expression> {
         Some(Expression::Call(CallExpression::new(
             function,
-            self.parse_call_aguments(),
+            self.parse_expression_list(TokenKind::Rparen),
         )))
     }
 
-    fn parse_call_aguments(&mut self) -> Vec<Expression> {
-        let mut args: Vec<_> = vec![];
-
-        if self.peek_token_is(&TokenKind::Rparen) {
-            self.next_token();
-            return args;
-        }
-
+    fn parse_index_expression(&mut self, left: Expression) -> Option<Expression> {
         self.next_token();
 
-        args.push(self.parse_expression(LOWEST).unwrap());
+        let index = self.parse_expression(LOWEST).unwrap();
 
-        while self.peek_token_is(&TokenKind::Comma) {
-            self.next_token();
-            self.next_token();
-            args.push(self.parse_expression(LOWEST).unwrap());
+        if !self.expect_peek(TokenKind::Rbracket) {
+            return None;
         }
 
-        if !self.expect_peek(TokenKind::Rparen) {
-            return vec![];
-        }
-
-        args
+        Some(Expression::Index(IndexExpression::new(left, index)))
     }
 
     fn parse_grouped_expression(&mut self) -> Option<Expression> {
@@ -369,6 +389,7 @@ impl<'a> Parser<'a> {
             TokenKind::String => self.parse_string_literal(),
             TokenKind::Function => self.parse_function_literal(),
             TokenKind::Lparen => self.parse_grouped_expression(),
+            TokenKind::Lbracket => self.parse_array_literal(),
             TokenKind::If => self.parse_if_expression(),
             TokenKind::True | TokenKind::False => self.parse_boolean(),
             TokenKind::Bang | TokenKind::Minus => self.parse_prefix_expression(),
@@ -387,6 +408,7 @@ impl<'a> Parser<'a> {
             | TokenKind::Lt
             | TokenKind::Gt => self.parse_infix_expression(left),
             TokenKind::Lparen => self.parse_call_expression(left),
+            TokenKind::Lbracket => self.parse_index_expression(left),
             _ => None,
         }
     }
@@ -410,6 +432,7 @@ impl<'a> Parser<'a> {
             TokenKind::Slash => PRODUCT,
             TokenKind::Asterisk => PRODUCT,
             TokenKind::Lparen => CALL,
+            TokenKind::Lbracket => INDEX,
             _ => LOWEST,
         }
     }
@@ -419,9 +442,10 @@ impl<'a> Parser<'a> {
 mod tests {
     use crate::{
         ast::{
-            BlockStatement, BooleanExpression, CallExpression, Expression, ExpressionStatement,
-            FunctionLiteral, Identifier, IfExpression, InfixExpression, IntegerLiteral,
-            LetStatement, PrefixExpression, Program, ReturnStatement, Statement, StringLiteral,
+            ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
+            ExpressionStatement, FunctionLiteral, Identifier, IfExpression, IndexExpression,
+            InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program,
+            ReturnStatement, Statement, StringLiteral,
         },
         lexer::Lexer,
     };
@@ -624,6 +648,14 @@ return y;
                 "add(a + b + c * d / f + g)",
                 "add((((a + b) + ((c * d) / f)) + g))",
             ),
+            (
+                "a * [1, 2, 3, 4][b * c] * d",
+                "((a * ([1, 2, 3, 4][(b * c)])) * d)",
+            ),
+            (
+                "add(a * b[2], b[1], 2 * [1, 2][1])",
+                "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))",
+            ),
         ];
 
         for (input, output) in tests.iter() {
@@ -755,16 +787,67 @@ return y;
         let program = parser.parse_program();
 
         assert_eq!(
-        program,
-        Program {
-                statements: vec![
-                    Statement::Expression(ExpressionStatement::new(
-                        Expression::StringLiteral(
-                            StringLiteral::new("hello world!".into())
-                        )
-                    ))
-                ]
+            program,
+            Program {
+                statements: vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::StringLiteral(StringLiteral::new("hello world!".into()))
+                ))]
             }
-    );
+        );
+    }
+
+    #[test]
+    fn test_array_literals() {
+        let input = "[1,  2 * 2, 3 + 3]";
+
+        let mut lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(
+            program,
+            Program {
+                statements: vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::ArrayLiteral(ArrayLiteral::new(vec![
+                        Expression::IntegerLiteral(IntegerLiteral::new(1),),
+                        Expression::Infix(InfixExpression::new(
+                            "*".into(),
+                            Expression::IntegerLiteral(IntegerLiteral::new(2)),
+                            Expression::IntegerLiteral(IntegerLiteral::new(2)),
+                        )),
+                        Expression::Infix(InfixExpression::new(
+                            "+".into(),
+                            Expression::IntegerLiteral(IntegerLiteral::new(3)),
+                            Expression::IntegerLiteral(IntegerLiteral::new(3)),
+                        ))
+                    ]))
+                ))]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parsing_index_expressions() {
+        let input = "myArray[1 + 1]";
+
+        let mut lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(
+            program,
+            Program {
+                statements: vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::Index(IndexExpression::new(
+                        Expression::Identifier(Identifier::new("myArray".into())),
+                        Expression::Infix(InfixExpression::new(
+                            "+".into(),
+                            Expression::IntegerLiteral(IntegerLiteral::new(1)),
+                            Expression::IntegerLiteral(IntegerLiteral::new(1)),
+                        ))
+                    ))
+                ))]
+            }
+        );
     }
 }

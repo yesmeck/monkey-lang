@@ -15,6 +15,7 @@ pub enum ObjectKind {
     RuntimeError,
     Function,
     BuiltinFunction,
+    Array,
 }
 
 impl Display for ObjectKind {
@@ -28,6 +29,7 @@ impl Display for ObjectKind {
             Self::RuntimeError => write!(f, "RUNTIME ERROR"),
             Self::Function => write!(f, "FUNCTION"),
             Self::BuiltinFunction => write!(f, "BUILTIN"),
+            Self::Array => write!(f, "ARRAY"),
         }
     }
 }
@@ -37,6 +39,7 @@ pub enum Object {
     Integer(Integer),
     Str(Str),
     Boolean(Boolean),
+    Array(Array),
     Null(Null),
     ReturnValue(ReturnValue),
     RuntimeError(RuntimeError),
@@ -50,6 +53,7 @@ impl Object {
             Self::Integer(o) => o.kind(),
             Self::Str(o) => o.kind(),
             Self::Boolean(o) => o.kind(),
+            Self::Array(o) => o.kind(),
             Self::Null(o) => o.kind(),
             Self::ReturnValue(o) => o.kind(),
             Self::RuntimeError(o) => o.kind(),
@@ -63,6 +67,7 @@ impl Object {
             Self::Integer(o) => o.inspect(),
             Self::Str(o) => o.inspect(),
             Self::Boolean(o) => o.inspect(),
+            Self::Array(o) => o.inspect(),
             Self::Null(o) => o.inspect(),
             Self::ReturnValue(o) => o.inspect(),
             Self::RuntimeError(o) => o.inspect(),
@@ -149,7 +154,7 @@ impl Inspector for Null {
     }
 
     fn inspect(&self) -> String {
-        "Null".into()
+        "null".into()
     }
 }
 
@@ -254,5 +259,33 @@ impl Inspector for BuiltinFunction {
 
     fn inspect(&self) -> String {
         "builtin function".into()
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Array {
+    pub elements: Vec<Object>,
+}
+
+impl Array {
+    pub fn new(elements: Vec<Object>) -> Self {
+        Self { elements }
+    }
+}
+
+impl Inspector for Array {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Array
+    }
+
+    fn inspect(&self) -> String {
+        format!(
+            "[{}]",
+            self.elements
+                .iter()
+                .map(|i| i.inspect())
+                .collect::<Vec<String>>()
+                .join(", "),
+        )
     }
 }

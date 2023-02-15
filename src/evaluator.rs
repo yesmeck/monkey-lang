@@ -5,7 +5,7 @@ use crate::ast::{BlockStatement, Expression, Identifier, IfExpression, Node, Pro
 use crate::builtin::Builtin;
 use crate::enviroment::Enviroment;
 use crate::object::{
-    Boolean, BuiltinFunction, Function, Inspector, Integer, Null, Object, ReturnValue,
+    Array, Boolean, BuiltinFunction, Function, Inspector, Integer, Null, Object, ReturnValue,
     RuntimeError, Str,
 };
 
@@ -63,6 +63,26 @@ impl<'a> Evaluator<'a> {
                 Object::Str(Str::new(node.value.to_owned()))
             }
 
+            Node::Expression(Expression::ArrayLiteral(node)) => {
+                let elements = self.eval_expressions(node.elements.clone());
+                if elements.len() == 1 && self.is_error(&elements[0]) {
+                    return elements[0].clone();
+                }
+                Object::Array(Array::new(elements))
+            }
+
+            Node::Expression(Expression::Index(node)) => {
+                let left = self.eval(Node::Expression(&node.left));
+                if self.is_error(&left) {
+                    return left;
+                }
+                let index = self.eval(Node::Expression(&node.index));
+                if self.is_error(&index) {
+                    return index;
+                }
+                self.eval_index_expression(left, index)
+            }
+
             Node::Expression(Expression::Boolean(node)) => {
                 self.native_bool_to_boolean_object(node.value)
             }
@@ -109,14 +129,14 @@ impl<'a> Evaluator<'a> {
 
                 match func {
                     Object::Function(func) => {
-                        let args = self.eval_expression(node.arguments.clone());
+                        let args = self.eval_expressions(node.arguments.clone());
                         if args.len() == 1 && self.is_error(&args[0]) {
                             return args[0].clone();
                         }
                         self.apply_function(&func, args)
-                    },
+                    }
                     Object::BuiltinFunction(func) => {
-                        let args = self.eval_expression(node.arguments.clone());
+                        let args = self.eval_expressions(node.arguments.clone());
                         if args.len() == 1 && self.is_error(&args[0]) {
                             return args[0].clone();
                         }
@@ -125,8 +145,7 @@ impl<'a> Evaluator<'a> {
                     _ => Object::RuntimeError(RuntimeError::new(format!(
                         "Not a function: {}",
                         func.kind(),
-                    )))
-
+                    ))),
                 }
             }
         }
@@ -172,7 +191,7 @@ impl<'a> Evaluator<'a> {
         result
     }
 
-    fn eval_expression(&mut self, exps: Vec<Expression>) -> Vec<Object> {
+    fn eval_expressions(&mut self, exps: Vec<Expression>) -> Vec<Object> {
         let mut result: Vec<_> = vec![];
 
         for exp in exps.iter() {
@@ -200,6 +219,30 @@ impl<'a> Evaluator<'a> {
         }
 
         result
+    }
+
+    fn eval_index_expression(&mut self, left: Object, index: Object) -> Object {
+        match left {
+            Object::Array(array) => match index {
+                Object::Integer(index) => {
+                    if index.value < 0
+                        || array.elements.len() < (index.value + 1).try_into().unwrap()
+                    {
+                        Object::Null(Null::default())
+                    } else {
+                        array.elements[index.value as usize].clone()
+                    }
+                }
+                _ => Object::RuntimeError(RuntimeError::new(format!(
+                    "index is not a integer: {}",
+                    index.kind()
+                ))),
+            },
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "index operator not supported: {}",
+                left.kind()
+            ))),
+        }
     }
 
     fn eval_prefix_expression(&mut self, operator: String, right: Object) -> Object {
@@ -662,6 +705,48 @@ mod tests {
 
         for (input, output) in error_tests.iter() {
             test_error_object(test_eval(input), output.to_string());
+        }
+    }
+
+    #[test]
+    fn test_array_literals() {
+        let input = "[1, 2 * 2, 3 + 3]";
+
+        let evaluated = test_eval(input);
+
+        if let Object::Array(array) = evaluated {
+            test_integer_object(array.elements[0].to_owned(), 1);
+            test_integer_object(array.elements[1].to_owned(), 4);
+            test_integer_object(array.elements[2].to_owned(), 6)
+        } else {
+            panic!("not a array")
+        }
+    }
+
+    #[test]
+    fn test_array_index_expressions() {
+        let tests = [
+            ("[1, 2, 3][0]", 1),
+            ("[1, 2, 3][1]", 2),
+            ("[1, 2, 3][2]", 3),
+            ("let i = 0; [1][i];", 1),
+            ("[1, 2, 3][1 + 1];", 3),
+            ("let myArray = [1, 2, 3]; myArray[2];", 3),
+            (
+                "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
+                6,
+            ),
+            ("let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]", 2),
+        ];
+
+        let null_tests = ["[1, 2, 3][3]", "[1, 2, 3][-1]"];
+
+        for (input, output) in tests.iter() {
+            test_integer_object(test_eval(input), *output);
+        }
+
+        for input in null_tests {
+            test_null_object(test_eval(input));
         }
     }
 }

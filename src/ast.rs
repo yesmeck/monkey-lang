@@ -100,12 +100,14 @@ pub enum Expression {
     Identifier(Identifier),
     IntegerLiteral(IntegerLiteral),
     StringLiteral(StringLiteral),
+    ArrayLiteral(ArrayLiteral),
     FunctionLiteral(FunctionLiteral),
     Boolean(BooleanExpression),
     Prefix(PrefixExpression),
     Infix(InfixExpression),
     Call(CallExpression),
     If(IfExpression),
+    Index(IndexExpression),
 }
 
 impl Display for Expression {
@@ -114,10 +116,12 @@ impl Display for Expression {
             Self::Identifier(e) => write!(f, "{}", e),
             Self::IntegerLiteral(e) => write!(f, "{}", e),
             Self::StringLiteral(e) => write!(f, "{}", e),
+            Self::ArrayLiteral(e) => write!(f, "{}", e),
             Self::FunctionLiteral(e) => write!(f, "{}", e),
             Self::Boolean(e) => write!(f, "{}", e),
             Self::Prefix(e) => write!(f, "{}", e),
             Self::Infix(e) => write!(f, "{}", e),
+            Self::Index(e) => write!(f, "{}", e),
             Self::Call(e) => write!(f, "{}", e),
             Self::If(e) => write!(f, "{}", e),
         }
@@ -172,6 +176,31 @@ impl StringLiteral {
 impl Display for StringLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ArrayLiteral {
+    pub elements: Vec<Expression>,
+}
+
+impl ArrayLiteral {
+    pub fn new(elements: Vec<Expression>) -> Self {
+        Self { elements }
+    }
+}
+
+impl Display for ArrayLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[{}]",
+            self.elements
+                .iter()
+                .map(|e| format!("{e}"))
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
     }
 }
 
@@ -305,6 +334,27 @@ impl Display for CallExpression {
                 .collect::<Vec<String>>()
                 .join(", ")
         )
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct IndexExpression {
+    pub left: Box<Expression>,
+    pub index: Box<Expression>,
+}
+
+impl IndexExpression {
+    pub fn new(left: Expression, index: Expression) -> Self {
+        Self {
+            left: Box::new(left),
+            index: Box::new(index),
+        }
+    }
+}
+
+impl Display for IndexExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}[{}])", self.left, self.index)
     }
 }
 
