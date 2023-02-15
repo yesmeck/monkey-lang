@@ -48,7 +48,7 @@ impl<'a> Parser<'a> {
     pub fn parse_program(&mut self) -> Program {
         let mut program = Program { statements: vec![] };
 
-        while self.cur_token.0 != TokenKind::EOF {
+        while self.cur_token.0 != TokenKind::Eof {
             if let Some(stmt) = self.parse_statement() {
                 program.statements.push(stmt);
             }
@@ -290,7 +290,7 @@ impl<'a> Parser<'a> {
 
         self.next_token();
 
-        while !self.cur_token_is(&TokenKind::Rbrace) && !self.cur_token_is(&TokenKind::EOF) {
+        while !self.cur_token_is(&TokenKind::Rbrace) && !self.cur_token_is(&TokenKind::Eof) {
             if let Some(stmt) = self.parse_statement() {
                 block.statements.push(stmt);
             }

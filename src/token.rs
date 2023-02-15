@@ -1,7 +1,7 @@
 #[derive(Debug, PartialEq)]
 pub enum TokenKind {
     Illegal,
-    EOF,
+    Eof,
 
     Int,
     Ident,

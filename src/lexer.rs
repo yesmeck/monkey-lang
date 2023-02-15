@@ -61,7 +61,7 @@ impl Lexer {
             Some('{') => Token(TokenKind::Lbrace, "{".into()),
             Some('}') => Token(TokenKind::Rbrace, "}".into()),
             Some('"') => Token(TokenKind::String, self.read_string().into()),
-            None => Token(TokenKind::EOF, "\n".into()),
+            None => Token(TokenKind::Eof, "\n".into()),
             Some(ch) => {
                 if self.is_letter(Some(ch)) {
                     return Token::from_word(self.read_identifier());
@@ -269,7 +269,7 @@ if (5 < 10) {
             Token(TokenKind::Semicolon, ";".into()),
             Token(TokenKind::String, "foobar".into()),
             Token(TokenKind::String, "foo bar".into()),
-            Token(TokenKind::EOF, "\n".into()),
+            Token(TokenKind::Eof, "\n".into()),
         ];
 
         for token in expected.iter() {
