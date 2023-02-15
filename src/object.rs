@@ -1,4 +1,4 @@
-use std::{fmt::Display, rc::Rc, cell::RefCell};
+use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 use crate::{
     ast::{BlockStatement, Identifier},
@@ -14,6 +14,7 @@ pub enum ObjectKind {
     ReturnValue,
     RuntimeError,
     Function,
+    BuiltinFunction,
 }
 
 impl Display for ObjectKind {
@@ -26,6 +27,7 @@ impl Display for ObjectKind {
             Self::ReturnValue => write!(f, "RETURN VALUE"),
             Self::RuntimeError => write!(f, "RUNTIME ERROR"),
             Self::Function => write!(f, "FUNCTION"),
+            Self::BuiltinFunction => write!(f, "BUILTIN"),
         }
     }
 }
@@ -39,6 +41,7 @@ pub enum Object {
     ReturnValue(ReturnValue),
     RuntimeError(RuntimeError),
     Function(Function),
+    BuiltinFunction(BuiltinFunction),
 }
 
 impl Object {
@@ -51,6 +54,7 @@ impl Object {
             Self::ReturnValue(o) => o.kind(),
             Self::RuntimeError(o) => o.kind(),
             Self::Function(o) => o.kind(),
+            Self::BuiltinFunction(o) => o.kind(),
         }
     }
 
@@ -63,6 +67,7 @@ impl Object {
             Self::ReturnValue(o) => o.inspect(),
             Self::RuntimeError(o) => o.inspect(),
             Self::Function(o) => o.inspect(),
+            Self::BuiltinFunction(o) => o.inspect(),
         }
     }
 }
@@ -95,11 +100,13 @@ impl Inspector for Integer {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Str {
-    pub value: String
+    pub value: String,
 }
 
 impl Str {
-    pub fn new(value: String) -> Self { Self { value } }
+    pub fn new(value: String) -> Self {
+        Self { value }
+    }
 }
 
 impl Inspector for Str {
@@ -111,7 +118,6 @@ impl Inspector for Str {
         self.value.to_string()
     }
 }
-
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Boolean {
@@ -134,7 +140,7 @@ impl Inspector for Boolean {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct Null {}
 
 impl Inspector for Null {
@@ -199,7 +205,11 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new(parameters: Vec<Identifier>, body: BlockStatement, env: Rc<RefCell<Enviroment>>) -> Self {
+    pub fn new(
+        parameters: Vec<Identifier>,
+        body: BlockStatement,
+        env: Rc<RefCell<Enviroment>>,
+    ) -> Self {
         Self {
             parameters,
             body,
@@ -223,5 +233,26 @@ impl Inspector for Function {
                 .join(", "),
             self.body
         )
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct BuiltinFunction {
+    pub name: String,
+}
+
+impl BuiltinFunction {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Inspector for BuiltinFunction {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::BuiltinFunction
+    }
+
+    fn inspect(&self) -> String {
+        "builtin function".into()
     }
 }

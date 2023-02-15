@@ -2,19 +2,23 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::ast::{BlockStatement, Expression, Identifier, IfExpression, Node, Program, Statement};
+use crate::builtin::Builtin;
 use crate::enviroment::Enviroment;
 use crate::object::{
-    Boolean, Function, Inspector, Integer, Null, Object, ReturnValue, RuntimeError, Str,
+    Boolean, BuiltinFunction, Function, Inspector, Integer, Null, Object, ReturnValue,
+    RuntimeError, Str,
 };
 
-pub struct Evaluator {
+pub struct Evaluator<'a> {
     env: Rc<RefCell<Enviroment>>,
+    builtin: Builtin<'a>,
 }
 
-impl Evaluator {
+impl<'a> Evaluator<'a> {
     pub fn new(env: Enviroment) -> Self {
         Self {
             env: Rc::new(RefCell::new(env)),
+            builtin: Builtin::new(),
         }
     }
 
@@ -103,14 +107,26 @@ impl Evaluator {
                     return func;
                 }
 
-                if let Object::Function(func) = func {
-                    let args = self.eval_expression(node.arguments.clone());
-                    if args.len() == 1 && self.is_error(&args[0]) {
-                        return args[0].clone();
+                match func {
+                    Object::Function(func) => {
+                        let args = self.eval_expression(node.arguments.clone());
+                        if args.len() == 1 && self.is_error(&args[0]) {
+                            return args[0].clone();
+                        }
+                        self.apply_function(&func, args)
+                    },
+                    Object::BuiltinFunction(func) => {
+                        let args = self.eval_expression(node.arguments.clone());
+                        if args.len() == 1 && self.is_error(&args[0]) {
+                            return args[0].clone();
+                        }
+                        self.builtin.try_function(&func.name, args).unwrap()
                     }
-                    self.apply_function(&func, args)
-                } else {
-                    Object::RuntimeError(RuntimeError::new("Not a function".into()))
+                    _ => Object::RuntimeError(RuntimeError::new(format!(
+                        "Not a function: {}",
+                        func.kind(),
+                    )))
+
                 }
             }
         }
@@ -320,6 +336,8 @@ impl Evaluator {
     fn eval_indentifier(&self, node: &Identifier) -> Object {
         if let Some(value) = self.env.borrow().get(node.value.to_owned()) {
             value
+        } else if self.builtin.function_exists(&node.value) {
+            Object::BuiltinFunction(BuiltinFunction::new(node.value.to_owned()))
         } else {
             Object::RuntimeError(RuntimeError::new(format!(
                 "identifier not found: {}",
@@ -395,6 +413,14 @@ mod tests {
 
     fn test_null_object(object: Object) {
         assert!(matches!(object, Object::Null(_)))
+    }
+
+    fn test_error_object(object: Object, expected: String) {
+        if let Object::RuntimeError(error) = object {
+            assert_eq!(error.inspect(), format!("Error: {}", expected));
+        } else {
+            panic!("not a error")
+        }
     }
 
     #[test]
@@ -540,12 +566,7 @@ mod tests {
         for (input, output) in tests.iter() {
             println!("{} => {}", input, output);
             let evaluated = test_eval(input);
-
-            if let Object::RuntimeError(error) = evaluated {
-                assert_eq!(error.inspect(), format!("Error: {}", output));
-            } else {
-                panic!("not a error")
-            }
+            test_error_object(evaluated, output.to_string());
         }
     }
 
@@ -618,5 +639,29 @@ mod tests {
         let input = "\"Hello\" + \" \" + \"world!\"";
 
         test_string_object(test_eval(input), "Hello world!".into());
+    }
+
+    #[test]
+    fn test_builtin_functions() {
+        let number_tests = [
+            (r#"len("")"#, 0),
+            (r#"len("four")"#, 4),
+            (r#"len("hello world")"#, 11),
+        ];
+        let error_tests = [
+            (r#"len(1)"#, "argument to `len` not supported, got INTEGER"),
+            (
+                r#"len("one", "two")"#,
+                "wrong number of arguments. got=2, want=1",
+            ),
+        ];
+
+        for (input, output) in number_tests.iter() {
+            test_integer_object(test_eval(input), *output);
+        }
+
+        for (input, output) in error_tests.iter() {
+            test_error_object(test_eval(input), output.to_string());
+        }
     }
 }
