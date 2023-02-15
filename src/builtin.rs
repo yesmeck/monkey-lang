@@ -31,6 +31,7 @@ impl<'a> Builtin<'a> {
 
         match args[0] {
             Object::Str(ref string) => Object::Integer(Integer::new(string.value.len() as i64)),
+            Object::Array(ref array) => Object::Integer(Integer::new(array.elements.len() as i64)),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "argument to `len` not supported, got {}",
                 args[0].kind()
