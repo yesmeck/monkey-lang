@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::ast::{BlockStatement, Expression, Identifier, IfExpression, Node, Program, Statement};
 use crate::enviroment::Enviroment;
 use crate::object::{
-    Boolean, Function, Inspector, Integer, Null, Object, ReturnValue, RuntimeError, Str
+    Boolean, Function, Inspector, Integer, Null, Object, ReturnValue, RuntimeError, Str,
 };
 
 pub struct Evaluator {
@@ -213,20 +213,41 @@ impl Evaluator {
                 return self.eval_integer_infix_expression(operator, left, right);
             }
         }
-        if operator == "==" {
-            let result = left == right;
-            return self.native_bool_to_boolean_object(result);
+
+        if let Object::Str(ref left) = left {
+            if let Object::Str(ref right) = right {
+                return self.eval_string_infix_expression(operator, left, right);
+            }
         }
-        if operator == "!=" {
-            let result = left != right;
-            return self.native_bool_to_boolean_object(result);
+
+        match operator.as_str() {
+            "==" => {
+                let result = left == right;
+                self.native_bool_to_boolean_object(result)
+            }
+            "!=" => {
+                let result = left != right;
+                self.native_bool_to_boolean_object(result)
+            }
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "unknown operator: {} {} {}",
+                left.kind(),
+                operator,
+                right.kind()
+            ))),
         }
-        Object::RuntimeError(RuntimeError::new(format!(
-            "unknown operator: {} {} {}",
-            left.kind(),
-            operator,
-            right.kind()
-        )))
+    }
+
+    fn eval_string_infix_expression(&self, operator: String, left: &Str, right: &Str) -> Object {
+        match operator.as_str() {
+            "+" => Object::Str(Str::new(format!("{}{}", left.value, right.value))),
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "unknown operator: {} {} {}",
+                left.kind(),
+                operator,
+                right.kind(),
+            ))),
+        }
     }
 
     fn eval_integer_infix_expression(
@@ -363,7 +384,6 @@ mod tests {
             panic!("not a string");
         }
     }
-
 
     fn test_boolean_object(object: Object, expected: bool) {
         if let Object::Boolean(bool) = object {
@@ -514,6 +534,7 @@ mod tests {
                 "unknown operator: BOOLEAN + BOOLEAN",
             ),
             ("foobar", "identifier not found: foobar"),
+            ("\"Hello\" - \"World\"", "unknown operator: STRING - STRING"),
         ];
 
         for (input, output) in tests.iter() {
@@ -588,6 +609,13 @@ mod tests {
     #[test]
     fn test_string_literal() {
         let input = "\"Hello world!\"";
+
+        test_string_object(test_eval(input), "Hello world!".into());
+    }
+
+    #[test]
+    fn test_string_concatenation() {
+        let input = "\"Hello\" + \" \" + \"world!\"";
 
         test_string_object(test_eval(input), "Hello world!".into());
     }
