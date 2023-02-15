@@ -235,26 +235,46 @@ impl<'a> Evaluator<'a> {
 
     fn eval_index_expression(&mut self, left: Object, index: Object) -> Object {
         match left {
-            Object::Array(array) => match index {
-                Object::Integer(index) => {
-                    if index.value < 0
-                        || array.elements.len() < (index.value + 1).try_into().unwrap()
-                    {
-                        Object::Null(Null::default())
-                    } else {
-                        array.elements[index.value as usize].clone()
-                    }
-                }
-                _ => Object::RuntimeError(RuntimeError::new(format!(
-                    "index is not a integer: {}",
-                    index.kind()
-                ))),
-            },
+            Object::Array(array) => self.eval_array_index_expression(array, index),
+            Object::Hash(hash) => self.eval_hash_index_expression(hash, index),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "index operator not supported: {}",
                 left.kind()
             ))),
         }
+    }
+
+    fn eval_array_index_expression(&self, array: Array, index: Object) -> Object {
+        match index {
+            Object::Integer(index) => {
+                if index.value < 0 || array.elements.len() < (index.value + 1).try_into().unwrap() {
+                    Object::Null(Null::default())
+                } else {
+                    array.elements[index.value as usize].clone()
+                }
+            }
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "index is not a integer: {}",
+                index.kind()
+            ))),
+        }
+    }
+
+    fn eval_hash_index_expression(&self, hash: Hash, index: Object) -> Object {
+        let key = match index {
+            Object::Integer(o) => o.hash_key(),
+            Object::Str(o) => o.hash_key(),
+            Object::Boolean(o) => o.hash_key(),
+            _ => {
+                return Object::RuntimeError(RuntimeError::new(format!(
+                    "unusable as hash key: {}",
+                    index.kind()
+                )))
+            }
+        };
+
+        hash.value.get::<String>(&key.stringify())
+            .unwrap_or(&Object::Null(Null::default())).to_owned()
     }
 
     fn eval_prefix_expression(&mut self, operator: String, right: Object) -> Object {
@@ -362,10 +382,12 @@ impl<'a> Evaluator<'a> {
                 Object::Str(o) => o.hash_key(),
                 Object::Integer(o) => o.hash_key(),
                 Object::Boolean(o) => o.hash_key(),
-                _ => return Object::RuntimeError(RuntimeError::new(format!(
-                    "only string, integer and boolean can be hash key, found {}",
-                    key.kind()
-                ))),
+                _ => {
+                    return Object::RuntimeError(RuntimeError::new(format!(
+                        "only string, integer and boolean can be hash key, found {}",
+                        key.kind()
+                    )))
+                }
             };
 
             let value = self.eval(Node::Expression(&member.value));
@@ -462,7 +484,7 @@ mod tests {
         ast::Node,
         enviroment::Enviroment,
         lexer::Lexer,
-        object::{HashKeyable, Inspector, Integer, Object, Str, Boolean},
+        object::{Boolean, HashKeyable, Inspector, Integer, Object, Str},
         parser::Parser,
     };
 
@@ -649,6 +671,10 @@ mod tests {
             ),
             ("foobar", "identifier not found: foobar"),
             ("\"Hello\" - \"World\"", "unknown operator: STRING - STRING"),
+            (
+                r#"{"name": "Monkey"}[fn(x) { x }];"#,
+                "unusable as hash key: FUNCTION",
+            ),
         ];
 
         for (input, output) in tests.iter() {
@@ -853,6 +879,27 @@ mod tests {
             assert_eq!(hash.value, expected);
         } else {
             panic!("not a hash")
+        }
+    }
+
+    #[test]
+    fn test_hash_index_expressions() {
+        let tests = [
+            (r#"{"foo": 5}["foo"]"#, 5),
+            (r#"let key = "foo"; {"foo": 5}[key]"#, 5),
+            (r#"{5: 5}[5]"#, 5),
+            (r#"{true: 5}[true]"#, 5),
+            (r#"{false: 5}[false]"#, 5),
+        ];
+
+        let null_tests = [r#"{"foo": 5}["bar"]"#, r#"{}["foo"]"#];
+
+        for (input, output) in tests.iter() {
+            test_integer_object(test_eval(input), *output);
+        }
+
+        for input in null_tests.iter() {
+            test_null_object(test_eval(input));
         }
     }
 }
