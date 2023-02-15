@@ -2,13 +2,13 @@ use crate::object::{Array, Integer, Null, Object, RuntimeError};
 
 #[derive(Debug)]
 pub struct Builtin<'a> {
-    functions: [&'a str; 4],
+    functions: [&'a str; 5],
 }
 
 impl<'a> Builtin<'a> {
     pub fn new() -> Self {
         Self {
-            functions: ["len", "first", "last", "rest"],
+            functions: ["len", "first", "last", "rest", "puts"],
         }
     }
 
@@ -22,6 +22,7 @@ impl<'a> Builtin<'a> {
             "first" => Some(self.first(args)),
             "last" => Some(self.last(args)),
             "rest" => Some(self.rest(args)),
+            "puts" => Some(self.puts(args)),
             _ => None,
         }
     }
@@ -103,5 +104,13 @@ impl<'a> Builtin<'a> {
                 args[0].kind()
             ))),
         }
+    }
+
+    pub fn puts(&self, args: Vec<Object>) -> Object {
+        for arg in args.iter() {
+            println!("{}", arg.inspect());
+        }
+
+        Object::Null(Null::default())
     }
 }
