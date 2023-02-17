@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 
-use crate::{ast::Node, evaluator::Evaluator, lexer::Lexer, parser::Parser, enviroment::Enviroment};
+use crate::{evaluator::Evaluator, lexer::Lexer, parser::Parser, enviroment::Enviroment};
 
 const MONKEY_FACE: &str = r#"            __,__
    .--.  .-"     "-.  .--.
@@ -52,7 +52,7 @@ impl Repl {
                 continue;
             }
 
-            let evaluated = evaluator.eval(Node::Program(&program));
+            let evaluated = evaluator.eval(&program);
             println!("{}", evaluated.inspect());
 
             self.prompt();

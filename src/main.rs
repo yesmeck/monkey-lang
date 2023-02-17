@@ -5,7 +5,7 @@ use evaluator::Evaluator;
 use lexer::Lexer;
 use parser::Parser;
 
-use crate::{ast::Node, repl::Repl};
+use crate::repl::Repl;
 
 mod ast;
 mod builtin;
@@ -42,7 +42,7 @@ fn run(file: &str) {
         }
         process::exit(1);
     }
-    let evaluated = evaluator.eval(Node::Program(&program));
+    let evaluated = evaluator.eval(&program);
     println!("{}", evaluated.inspect());
 }
 

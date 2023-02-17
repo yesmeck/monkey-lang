@@ -1,10 +1,10 @@
 use std::fmt::Display;
 
-pub enum Node<'a> {
-    Program(&'a Program),
-    Statement(&'a Statement),
-    BlockStatement(&'a BlockStatement),
-    Expression(&'a Expression),
+pub enum Node {
+    Program(Program),
+    Statement(Statement),
+    BlockStatement(BlockStatement),
+    Expression(Expression),
 }
 
 #[derive(Debug, PartialEq, Clone)]

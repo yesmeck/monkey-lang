@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::ast::{
-    BlockStatement, Expression, HashLiteral, Identifier, IfExpression, Node, Program, Statement,
+    BlockStatement, Expression, HashLiteral, Identifier, IfExpression, Program, Statement,
 };
 use crate::builtin::Builtin;
 use crate::enviroment::Enviroment;
@@ -27,16 +27,18 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    pub fn eval(&mut self, ast: Node) -> Rc<Object> {
+    pub fn eval(&mut self, program: &Program) -> Rc<Object> {
+        self.eval_program(program)
+    }
+
+    fn eval_statement(&mut self, ast: &Statement) -> Rc<Object> {
         match ast {
-            Node::Program(node) => self.eval_program(node),
-            // Node::Statement(node) => eval(ast)
-            Node::Statement(Statement::Expression(node)) => {
-                self.eval(Node::Expression(&node.expression))
+             Statement::Expression(node) => {
+                self.eval_expression(&node.expression)
             }
 
-            Node::Statement(Statement::Return(node)) => {
-                let value = self.eval(Node::Expression(&node.return_value));
+            Statement::Return(node) => {
+                let value = self.eval_expression(&node.return_value);
                 if self.is_error(&value) {
                     value
                 } else {
@@ -44,8 +46,8 @@ impl<'a> Evaluator<'a> {
                 }
             }
 
-            Node::Statement(Statement::Let(node)) => {
-                let value = self.eval(Node::Expression(&node.value));
+            Statement::Let(node) => {
+                let value = self.eval_expression(&node.value);
                 if self.is_error(&value) {
                     value
                 } else {
@@ -55,20 +57,22 @@ impl<'a> Evaluator<'a> {
                     value
                 }
             }
+        }
+    }
 
-            Node::BlockStatement(node) => self.eval_block_statement(node),
+    fn eval_expression(&mut self, ast: &Expression) -> Rc<Object> {
+        match ast {
+            Expression::Identifier(ref node) => self.eval_indentifier(node),
 
-            Node::Expression(Expression::Identifier(node)) => self.eval_indentifier(node),
-
-            Node::Expression(Expression::IntegerLiteral(node)) => {
+            Expression::IntegerLiteral(node) => {
                 Object::Integer(Integer::new(node.value)).into()
             }
 
-            Node::Expression(Expression::StringLiteral(node)) => {
+            Expression::StringLiteral(node) => {
                 Object::Str(Str::new(node.value.to_owned())).into()
             }
 
-            Node::Expression(Expression::ArrayLiteral(node)) => {
+            Expression::ArrayLiteral(node) => {
                 let elements = self.eval_expressions(node.elements.clone());
                 if elements.len() == 1 && self.is_error(&elements[0]) {
                     return elements[0].clone();
@@ -76,33 +80,33 @@ impl<'a> Evaluator<'a> {
                 Object::Array(Array::new(elements)).into()
             }
 
-            Node::Expression(Expression::HashLiteral(node)) => self.eval_hash_literal(node),
+            Expression::HashLiteral(ref node) => self.eval_hash_literal(node),
 
-            Node::Expression(Expression::Index(node)) => {
-                let left = self.eval(Node::Expression(&node.left));
+            Expression::Index(node) => {
+                let left = self.eval_expression(&node.left);
                 if self.is_error(&left) {
                     return left;
                 }
-                let index = self.eval(Node::Expression(&node.index));
+                let index = self.eval_expression(&node.index);
                 if self.is_error(&index) {
                     return index;
                 }
                 self.eval_index_expression(&left, &index)
             }
 
-            Node::Expression(Expression::Boolean(node)) => {
+            Expression::Boolean(node) => {
                 self.native_bool_to_boolean_object(node.value)
             }
 
-            Node::Expression(Expression::FunctionLiteral(node)) => Object::Function(Function::new(
+            Expression::FunctionLiteral(node) => Object::Function(Function::new(
                 node.parameters.to_owned(),
                 node.body.to_owned(),
                 Rc::clone(&self.env),
             ))
             .into(),
 
-            Node::Expression(Expression::Prefix(node)) => {
-                let right = self.eval(Node::Expression(node.right.as_ref()));
+            Expression::Prefix(node) => {
+                let right = self.eval_expression(node.right.as_ref());
                 if self.is_error(&right) {
                     right
                 } else {
@@ -110,14 +114,14 @@ impl<'a> Evaluator<'a> {
                 }
             }
 
-            Node::Expression(Expression::Infix(node)) => {
-                let left = self.eval(Node::Expression(node.left.as_ref()));
+            Expression::Infix(node) => {
+                let left = self.eval_expression(node.left.as_ref());
 
                 if self.is_error(&left) {
                     return left;
                 }
 
-                let right = self.eval(Node::Expression(node.right.as_ref()));
+                let right = self.eval_expression(node.right.as_ref());
 
                 if self.is_error(&right) {
                     return right;
@@ -126,10 +130,10 @@ impl<'a> Evaluator<'a> {
                 self.eval_infix_expression(node.operator.to_owned(), &left, &right)
             }
 
-            Node::Expression(Expression::If(node)) => self.eval_if_expression(node),
+            Expression::If(ref node) => self.eval_if_expression(node),
 
-            Node::Expression(Expression::Call(node)) => {
-                let func = self.eval(Node::Expression(&node.function));
+            Expression::Call(node) => {
+                let func = self.eval_expression(&node.function);
 
                 if self.is_error(&func) {
                     return func;
@@ -165,13 +169,14 @@ impl<'a> Evaluator<'a> {
                     .into(),
                 }
             }
+ 
         }
     }
 
     fn apply_function(&mut self, func: &Function, args: Vec<Rc<Object>>) -> Rc<Object> {
         let old_env = Rc::clone(&self.env);
         self.extend_function_env(func, args);
-        let return_value = self.eval(Node::BlockStatement(&func.body));
+        let return_value = self.eval_block_statement(&func.body);
         self.env = old_env;
         self.unwrap_return_value(return_value)
     }
@@ -196,7 +201,7 @@ impl<'a> Evaluator<'a> {
         let mut result = Rc::clone(&self.env.borrow().null_object);
 
         for stmt in program.statements.iter() {
-            result = self.eval(Node::Statement(stmt));
+            result = self.eval_statement(stmt);
 
             match *result {
                 Object::ReturnValue(ref return_object) => return Rc::clone(&return_object.value),
@@ -212,7 +217,7 @@ impl<'a> Evaluator<'a> {
         let mut result: Vec<_> = vec![];
 
         for exp in exps.iter() {
-            let evaluated = self.eval(Node::Expression(exp));
+            let evaluated = self.eval_expression(exp);
             if self.is_error(&evaluated) {
                 return vec![evaluated];
             }
@@ -226,7 +231,7 @@ impl<'a> Evaluator<'a> {
         let mut result = Rc::clone(&self.env.borrow().null_object);
 
         for stmt in block.statements.iter() {
-            result = self.eval(Node::Statement(stmt));
+            result = self.eval_statement(stmt);
 
             match *result {
                 Object::ReturnValue(_) => return result,
@@ -397,7 +402,7 @@ impl<'a> Evaluator<'a> {
         let mut hash_value = HashMap::new();
 
         for member in node.members.iter() {
-            let key = self.eval(Node::Expression(&member.key));
+            let key = self.eval_expression(&member.key);
 
             if self.is_error(&key) {
                 return key;
@@ -416,7 +421,7 @@ impl<'a> Evaluator<'a> {
                 }
             };
 
-            let value = self.eval(Node::Expression(&member.value));
+            let value = self.eval_expression(&member.value);
 
             if self.is_error(&value) {
                 return value;
@@ -453,16 +458,16 @@ impl<'a> Evaluator<'a> {
     }
 
     fn eval_if_expression(&mut self, ie: &IfExpression) -> Rc<Object> {
-        let condition = self.eval(Node::Expression(&ie.condition));
+        let condition = self.eval_expression(&ie.condition);
 
         if self.is_error(&condition) {
             return condition;
         }
 
         if self.is_truthy(condition) {
-            return self.eval(Node::BlockStatement(&ie.consequence));
+            return self.eval_block_statement(&ie.consequence);
         } else if let Some(ref alternative) = ie.alternative {
-            return self.eval(Node::BlockStatement(alternative));
+            return self.eval_block_statement(alternative);
         }
 
         Rc::clone(&self.env.borrow().null_object)
@@ -510,7 +515,6 @@ mod tests {
 
     use super::Evaluator;
     use crate::{
-        ast::Node,
         enviroment::Enviroment,
         lexer::Lexer,
         object::{Boolean, HashKeyable, Inspector, Integer, Object, Str, HashKey},
@@ -523,7 +527,7 @@ mod tests {
         let env = Enviroment::default();
         let program = parser.parse_program();
         let mut evaluator = Evaluator::new(env);
-        evaluator.eval(Node::Program(&program))
+        evaluator.eval(&program)
     }
 
     fn test_integer_object(object: &Rc<Object>, expected: i64) {
