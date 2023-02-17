@@ -7,7 +7,7 @@ use crate::{
     enviroment::Enviroment,
 };
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub enum ObjectKind {
     Integer,
     Str,
@@ -116,7 +116,7 @@ impl Inspector for Integer {
 
 impl HashKeyable for Integer {
     fn hash_key(&self) -> HashKey {
-        HashKey::new(ObjectKind::Integer, self.value)
+        HashKey::new(ObjectKind::Integer, self.value.to_string(), self.value)
     }
 }
 
@@ -145,7 +145,7 @@ impl HashKeyable for Str {
     fn hash_key(&self) -> HashKey {
         let mut hasher = FxHasher64::default();
         hasher.write(self.value.as_bytes());
-        HashKey::new(ObjectKind::Str, hasher.finish() as i64)
+        HashKey::new(ObjectKind::Str, self.value.to_owned(), hasher.finish() as i64)
     }
 }
 
@@ -176,7 +176,7 @@ impl HashKeyable for Boolean {
             true => 1,
             false => 0,
         };
-        HashKey::new(ObjectKind::Boolean, value)
+        HashKey::new(ObjectKind::Boolean, self.value.to_string(), value)
     }
 }
 
@@ -327,11 +327,11 @@ impl Inspector for Array {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Hash {
-    pub value: HashMap<String, Rc<Object>>,
+    pub value: HashMap<HashKey, Rc<Object>>,
 }
 
 impl Hash {
-    pub fn new(value: HashMap<String, Rc<Object>>) -> Self {
+    pub fn new(value: HashMap<HashKey, Rc<Object>>) -> Self {
         Self { value }
     }
 }
@@ -346,25 +346,22 @@ impl Inspector for Hash {
             "{{{}}}",
             self.value
                 .iter()
-                .map(|(k, v)| format!("{}: {}", k, v.inspect()))
+                .map(|(k, v)| format!("{}: {}", k.name, v.inspect()))
                 .collect::<Vec<String>>()
                 .join(", ")
         )
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub struct HashKey {
     pub kind: ObjectKind,
+    pub name: String,
     pub value: i64,
 }
 
 impl HashKey {
-    pub fn new(kind: ObjectKind, value: i64) -> Self {
-        Self { kind, value }
-    }
-
-    pub fn stringify(&self) -> String {
-        format!("{}{}", self.kind, self.value)
+    pub fn new(kind: ObjectKind, name: String, value: i64) -> Self {
+        Self { kind, name, value }
     }
 }

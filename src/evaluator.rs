@@ -282,7 +282,7 @@ impl<'a> Evaluator<'a> {
 
         Rc::clone(
             hash.value
-                .get::<String>(&key.stringify())
+                .get(&key)
                 .unwrap_or(&Rc::clone(&self.env.borrow().null_object)),
         )
     }
@@ -421,7 +421,7 @@ impl<'a> Evaluator<'a> {
             if self.is_error(&value) {
                 return value;
             }
-            hash_value.insert(hash_key.stringify(), value);
+            hash_value.insert(hash_key, value);
         }
 
         Object::Hash(Hash::new(hash_value)).into()
@@ -513,7 +513,7 @@ mod tests {
         ast::Node,
         enviroment::Enviroment,
         lexer::Lexer,
-        object::{Boolean, HashKeyable, Inspector, Integer, Object, Str},
+        object::{Boolean, HashKeyable, Inspector, Integer, Object, Str, HashKey},
         parser::Parser,
     };
 
@@ -879,29 +879,29 @@ mod tests {
         let evaluated = test_eval(input);
 
         if let Object::Hash(ref hash) = *evaluated {
-            let expected: HashMap<String, Rc<Object>> = HashMap::from([
+            let expected: HashMap<HashKey, Rc<Object>> = HashMap::from([
                 (
-                    Str::new("one".into()).hash_key().stringify(),
+                    Str::new("one".into()).hash_key(),
                     Object::Integer(Integer::new(1)).into(),
                 ),
                 (
-                    Str::new("two".into()).hash_key().stringify(),
+                    Str::new("two".into()).hash_key(),
                     Object::Integer(Integer::new(2)).into(),
                 ),
                 (
-                    Str::new("three".into()).hash_key().stringify(),
+                    Str::new("three".into()).hash_key(),
                     Object::Integer(Integer::new(3)).into(),
                 ),
                 (
-                    Integer::new(4).hash_key().stringify(),
+                    Integer::new(4).hash_key(),
                     Object::Integer(Integer::new(4)).into(),
                 ),
                 (
-                    Boolean::new(true).hash_key().stringify(),
+                    Boolean::new(true).hash_key(),
                     Object::Integer(Integer::new(5)).into(),
                 ),
                 (
-                    Boolean::new(false).hash_key().stringify(),
+                    Boolean::new(false).hash_key(),
                     Object::Integer(Integer::new(6)).into(),
                 ),
             ]);
