@@ -7,14 +7,14 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Builtin<'a> {
-    functions: [&'a str; 5],
+    functions: [&'a str; 6],
     env: Rc<RefCell<Enviroment>>,
 }
 
 impl<'a> Builtin<'a> {
     pub fn new(env: Rc<RefCell<Enviroment>>) -> Self {
         Self {
-            functions: ["len", "first", "last", "rest", "puts"],
+            functions: ["len", "first", "last", "rest", "push", "puts"],
             env,
         }
     }
@@ -30,6 +30,7 @@ impl<'a> Builtin<'a> {
             "last" => Some(self.last(args)),
             "rest" => Some(self.rest(args)),
             "puts" => Some(self.puts(args)),
+            "push" => Some(self.push(args)),
             _ => None,
         }
     }
@@ -120,7 +121,30 @@ impl<'a> Builtin<'a> {
                 Object::Array(Array::new(array.elements[1..].into())).into()
             }
             _ => Object::RuntimeError(RuntimeError::new(format!(
-                "argument to `last` must be ARRAY, got {}",
+                "argument to `rest` must be ARRAY, got {}",
+                args[0].kind()
+            )))
+            .into(),
+        }
+    }
+
+    pub fn push(&self, args: Vec<Rc<Object>>) -> Rc<Object> {
+        if args.len() != 2 {
+            return Object::RuntimeError(RuntimeError::new(format!(
+                "wrong number of arguments. got={}, want=2",
+                args.len()
+            )))
+            .into();
+        }
+
+        match *args[0] {
+            Object::Array(ref array) => {
+                let mut elements = array.elements.clone();
+                elements.push(Rc::clone(&args[1]));
+                Object::Array(Array::new(elements)).into()
+            }
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "first argument to `push` must be ARRAY, got {}",
                 args[0].kind()
             )))
             .into(),
@@ -132,6 +156,6 @@ impl<'a> Builtin<'a> {
             println!("{}", arg.inspect());
         }
 
-       Rc::clone(&self.env.borrow().null_object)
+        Rc::clone(&self.env.borrow().null_object)
     }
 }
