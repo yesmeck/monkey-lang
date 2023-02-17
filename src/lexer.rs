@@ -127,14 +127,14 @@ impl Lexer {
 
     fn is_letter(&self, ch: Option<char>) -> bool {
         if let Some(ch) = ch {
-            return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_';
+            return ('a'..='z').contains(&ch) || ('A'..='Z').contains(&ch) || ch == '_';
         }
         false
     }
 
     fn is_digital(&self, ch: Option<char>) -> bool {
         if let Some(ch) = ch {
-            return '0' <= ch && ch <= '9';
+            return ('0'..='9').contains(&ch)
         }
         false
     }
