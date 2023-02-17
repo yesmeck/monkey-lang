@@ -1,14 +1,21 @@
-use crate::object::{Array, Integer, Null, Object, RuntimeError};
+use std::{cell::RefCell, rc::Rc};
+
+use crate::{
+    enviroment::Enviroment,
+    object::{Array, Integer, Object, RuntimeError},
+};
 
 #[derive(Debug)]
 pub struct Builtin<'a> {
     functions: [&'a str; 5],
+    env: Rc<RefCell<Enviroment>>,
 }
 
 impl<'a> Builtin<'a> {
-    pub fn new() -> Self {
+    pub fn new(env: Rc<RefCell<Enviroment>>) -> Self {
         Self {
             functions: ["len", "first", "last", "rest", "puts"],
+            env,
         }
     }
 
@@ -16,7 +23,7 @@ impl<'a> Builtin<'a> {
         self.functions.contains(&func)
     }
 
-    pub fn try_function(&self, func: &str, args: Vec<Object>) -> Option<Object> {
+    pub fn try_function(&self, func: &str, args: Vec<Rc<Object>>) -> Option<Rc<Object>> {
         match func {
             "len" => Some(self.len(args)),
             "first" => Some(self.first(args)),
@@ -27,90 +34,104 @@ impl<'a> Builtin<'a> {
         }
     }
 
-    pub fn len(&self, args: Vec<Object>) -> Object {
+    pub fn len(&self, args: Vec<Rc<Object>>) -> Rc<Object> {
         if args.len() != 1 {
             return Object::RuntimeError(RuntimeError::new(format!(
                 "wrong number of arguments. got={}, want=1",
                 args.len()
-            )));
+            )))
+            .into();
         }
 
-        match args[0] {
-            Object::Str(ref string) => Object::Integer(Integer::new(string.value.len() as i64)),
-            Object::Array(ref array) => Object::Integer(Integer::new(array.elements.len() as i64)),
+        match *args[0] {
+            Object::Str(ref string) => {
+                Object::Integer(Integer::new(string.value.len() as i64)).into()
+            }
+            Object::Array(ref array) => {
+                Object::Integer(Integer::new(array.elements.len() as i64)).into()
+            }
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "argument to `len` not supported, got {}",
                 args[0].kind()
-            ))),
+            )))
+            .into(),
         }
     }
 
-    pub fn first(&self, args: Vec<Object>) -> Object {
+    pub fn first(&self, args: Vec<Rc<Object>>) -> Rc<Object> {
         if args.len() != 1 {
             return Object::RuntimeError(RuntimeError::new(format!(
                 "wrong number of arguments. got={}, want=1",
                 args.len()
-            )));
+            )))
+            .into();
         }
 
-        match args[0] {
-            Object::Array(ref array) => array
-                .elements
-                .first()
-                .unwrap_or(&Object::Null(Null::default()))
-                .clone(),
+        match *args[0] {
+            Object::Array(ref array) => Rc::clone(
+                array
+                    .elements
+                    .first()
+                    .unwrap_or(&self.env.borrow().null_object),
+            ),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "argument to `first` must be ARRAY, got {}",
                 args[0].kind()
-            ))),
+            )))
+            .into(),
         }
     }
 
-    pub fn last(&self, args: Vec<Object>) -> Object {
+    pub fn last(&self, args: Vec<Rc<Object>>) -> Rc<Object> {
         if args.len() != 1 {
             return Object::RuntimeError(RuntimeError::new(format!(
                 "wrong number of arguments. got={}, want=1",
                 args.len()
-            )));
+            )))
+            .into();
         }
 
-        match args[0] {
-            Object::Array(ref array) => array
-                .elements
-                .last()
-                .unwrap_or(&Object::Null(Null::default()))
-                .clone(),
-            _ => Object::RuntimeError(RuntimeError::new(format!(
-                "argument to `last` must be ARRAY, got {}",
-                args[0].kind()
-            ))),
-        }
-    }
-
-    pub fn rest(&self, args: Vec<Object>) -> Object {
-        if args.len() != 1 {
-            return Object::RuntimeError(RuntimeError::new(format!(
-                "wrong number of arguments. got={}, want=1",
-                args.len()
-            )));
-        }
-
-        match args[0] {
-            Object::Array(ref array) => Object::Array(Array::new(
-                array.elements[1..].into())
+        match *args[0] {
+            Object::Array(ref array) => Rc::clone(
+                array
+                    .elements
+                    .last()
+                    .unwrap_or(&self.env.borrow().null_object),
             ),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "argument to `last` must be ARRAY, got {}",
                 args[0].kind()
-            ))),
+            )))
+            .into(),
         }
     }
 
-    pub fn puts(&self, args: Vec<Object>) -> Object {
+    pub fn rest(&self, args: Vec<Rc<Object>>) -> Rc<Object> {
+        if args.len() != 1 {
+            return Object::RuntimeError(RuntimeError::new(format!(
+                "wrong number of arguments. got={}, want=1",
+                args.len()
+            )))
+            .into();
+        }
+
+        match *args[0] {
+            Object::Array(ref array) => {
+                Object::Array(Array::new(array.elements[1..].into())).into()
+            }
+            _ => Object::RuntimeError(RuntimeError::new(format!(
+                "argument to `last` must be ARRAY, got {}",
+                args[0].kind()
+            )))
+            .into(),
+        }
+    }
+
+    pub fn puts(&self, args: Vec<Rc<Object>>) -> Rc<Object> {
         for arg in args.iter() {
             println!("{}", arg.inspect());
         }
 
-        Object::Null(Null::default())
+       Rc::clone(&self.env.borrow().null_object)
     }
 }

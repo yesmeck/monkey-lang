@@ -8,10 +8,11 @@ use crate::ast::{
 use crate::builtin::Builtin;
 use crate::enviroment::Enviroment;
 use crate::object::{
-    Array, Boolean, BuiltinFunction, Function, Hash, HashKeyable, Inspector, Integer, Null, Object,
-    ReturnValue, RuntimeError, Str,
+    Array, BuiltinFunction, Function, Hash, HashKeyable, Inspector, Integer, Object, ReturnValue,
+    RuntimeError, Str,
 };
 
+#[derive(Debug)]
 pub struct Evaluator<'a> {
     env: Rc<RefCell<Enviroment>>,
     builtin: Builtin<'a>,
@@ -19,13 +20,14 @@ pub struct Evaluator<'a> {
 
 impl<'a> Evaluator<'a> {
     pub fn new(env: Enviroment) -> Self {
+        let env = Rc::new(RefCell::new(env));
         Self {
-            env: Rc::new(RefCell::new(env)),
-            builtin: Builtin::new(),
+            env: Rc::clone(&env),
+            builtin: Builtin::new(Rc::clone(&env)),
         }
     }
 
-    pub fn eval(&mut self, ast: Node) -> Object {
+    pub fn eval(&mut self, ast: Node) -> Rc<Object> {
         match ast {
             Node::Program(node) => self.eval_program(node),
             // Node::Statement(node) => eval(ast)
@@ -38,7 +40,7 @@ impl<'a> Evaluator<'a> {
                 if self.is_error(&value) {
                     value
                 } else {
-                    Object::ReturnValue(ReturnValue::new(value))
+                    Rc::new(Object::ReturnValue(ReturnValue::new(value)))
                 }
             }
 
@@ -59,11 +61,11 @@ impl<'a> Evaluator<'a> {
             Node::Expression(Expression::Identifier(node)) => self.eval_indentifier(node),
 
             Node::Expression(Expression::IntegerLiteral(node)) => {
-                Object::Integer(Integer::new(node.value))
+                Object::Integer(Integer::new(node.value)).into()
             }
 
             Node::Expression(Expression::StringLiteral(node)) => {
-                Object::Str(Str::new(node.value.to_owned()))
+                Object::Str(Str::new(node.value.to_owned())).into()
             }
 
             Node::Expression(Expression::ArrayLiteral(node)) => {
@@ -71,7 +73,7 @@ impl<'a> Evaluator<'a> {
                 if elements.len() == 1 && self.is_error(&elements[0]) {
                     return elements[0].clone();
                 }
-                Object::Array(Array::new(elements))
+                Object::Array(Array::new(elements)).into()
             }
 
             Node::Expression(Expression::HashLiteral(node)) => self.eval_hash_literal(node),
@@ -85,7 +87,7 @@ impl<'a> Evaluator<'a> {
                 if self.is_error(&index) {
                     return index;
                 }
-                self.eval_index_expression(left, index)
+                self.eval_index_expression(&left, &index)
             }
 
             Node::Expression(Expression::Boolean(node)) => {
@@ -96,7 +98,8 @@ impl<'a> Evaluator<'a> {
                 node.parameters.to_owned(),
                 node.body.to_owned(),
                 Rc::clone(&self.env),
-            )),
+            ))
+            .into(),
 
             Node::Expression(Expression::Prefix(node)) => {
                 let right = self.eval(Node::Expression(node.right.as_ref()));
@@ -120,7 +123,7 @@ impl<'a> Evaluator<'a> {
                     return right;
                 }
 
-                self.eval_infix_expression(node.operator.to_owned(), left, right)
+                self.eval_infix_expression(node.operator.to_owned(), &left, &right)
             }
 
             Node::Expression(Expression::If(node)) => self.eval_if_expression(node),
@@ -132,15 +135,15 @@ impl<'a> Evaluator<'a> {
                     return func;
                 }
 
-                match func {
-                    Object::Function(func) => {
+                match *func {
+                    Object::Function(ref func) => {
                         let args = self.eval_expressions(node.arguments.clone());
                         if args.len() == 1 && self.is_error(&args[0]) {
                             return args[0].clone();
                         }
-                        self.apply_function(&func, args)
+                        self.apply_function(func, args)
                     }
-                    Object::BuiltinFunction(func) => {
+                    Object::BuiltinFunction(ref func) => {
                         let args = self.eval_expressions(node.arguments.clone());
                         if args.len() == 1 && self.is_error(&args[0]) {
                             return args[0].clone();
@@ -152,18 +155,20 @@ impl<'a> Evaluator<'a> {
                                 "Not a function: {}",
                                 func.name,
                             )))
+                            .into()
                         }
                     }
                     _ => Object::RuntimeError(RuntimeError::new(format!(
                         "Not a function: {}",
                         func.kind(),
-                    ))),
+                    )))
+                    .into(),
                 }
             }
         }
     }
 
-    fn apply_function(&mut self, func: &Function, args: Vec<Object>) -> Object {
+    fn apply_function(&mut self, func: &Function, args: Vec<Rc<Object>>) -> Rc<Object> {
         let old_env = Rc::clone(&self.env);
         self.extend_function_env(func, args);
         let return_value = self.eval(Node::BlockStatement(&func.body));
@@ -171,30 +176,30 @@ impl<'a> Evaluator<'a> {
         self.unwrap_return_value(return_value)
     }
 
-    fn extend_function_env(&mut self, func: &Function, args: Vec<Object>) {
-        let mut env = Enviroment::new(Some(Rc::clone(&func.env)));
+    fn extend_function_env(&mut self, func: &Function, args: Vec<Rc<Object>>) {
+        let mut env = Enviroment::new(Rc::clone(&func.env));
         for (i, param) in func.parameters.iter().enumerate() {
             env.set(param.value.to_owned(), args[i].to_owned());
         }
         self.env = Rc::new(RefCell::new(env));
     }
 
-    fn unwrap_return_value(&self, obj: Object) -> Object {
-        if let Object::ReturnValue(return_value) = obj {
-            *return_value.value
+    fn unwrap_return_value(&self, obj: Rc<Object>) -> Rc<Object> {
+        if let Object::ReturnValue(ref return_value) = *obj {
+            Rc::clone(&return_value.value)
         } else {
             obj
         }
     }
 
-    fn eval_program(&mut self, program: &Program) -> Object {
-        let mut result = Object::Null(Null {});
+    fn eval_program(&mut self, program: &Program) -> Rc<Object> {
+        let mut result = Rc::clone(&self.env.borrow().null_object);
 
         for stmt in program.statements.iter() {
             result = self.eval(Node::Statement(stmt));
 
-            match result {
-                Object::ReturnValue(return_object) => return *return_object.value,
+            match *result {
+                Object::ReturnValue(ref return_object) => return Rc::clone(&return_object.value),
                 Object::RuntimeError(_) => return result,
                 _ => {}
             }
@@ -203,7 +208,7 @@ impl<'a> Evaluator<'a> {
         result
     }
 
-    fn eval_expressions(&mut self, exps: Vec<Expression>) -> Vec<Object> {
+    fn eval_expressions(&mut self, exps: Vec<Expression>) -> Vec<Rc<Object>> {
         let mut result: Vec<_> = vec![];
 
         for exp in exps.iter() {
@@ -217,13 +222,13 @@ impl<'a> Evaluator<'a> {
         result
     }
 
-    fn eval_block_statement(&mut self, block: &BlockStatement) -> Object {
-        let mut result = Object::Null(Null {});
+    fn eval_block_statement(&mut self, block: &BlockStatement) -> Rc<Object> {
+        let mut result = Rc::clone(&self.env.borrow().null_object);
 
         for stmt in block.statements.iter() {
             result = self.eval(Node::Statement(stmt));
 
-            match result {
+            match *result {
                 Object::ReturnValue(_) => return result,
                 Object::RuntimeError(_) => return result,
                 _ => {}
@@ -233,22 +238,23 @@ impl<'a> Evaluator<'a> {
         result
     }
 
-    fn eval_index_expression(&mut self, left: Object, index: Object) -> Object {
-        match left {
-            Object::Array(array) => self.eval_array_index_expression(array, index),
-            Object::Hash(hash) => self.eval_hash_index_expression(hash, index),
+    fn eval_index_expression(&mut self, left: &Rc<Object>, index: &Rc<Object>) -> Rc<Object> {
+        match **left {
+            Object::Array(ref array) => self.eval_array_index_expression(array, index),
+            Object::Hash(ref hash) => self.eval_hash_index_expression(hash, index),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "index operator not supported: {}",
                 left.kind()
-            ))),
+            )))
+            .into(),
         }
     }
 
-    fn eval_array_index_expression(&self, array: Array, index: Object) -> Object {
-        match index {
-            Object::Integer(index) => {
+    fn eval_array_index_expression(&self, array: &Array, index: &Rc<Object>) -> Rc<Object> {
+        match **index {
+            Object::Integer(ref index) => {
                 if index.value < 0 || array.elements.len() < (index.value + 1).try_into().unwrap() {
-                    Object::Null(Null::default())
+                    Rc::clone(&self.env.borrow().null_object)
                 } else {
                     array.elements[index.value as usize].clone()
                 }
@@ -256,28 +262,32 @@ impl<'a> Evaluator<'a> {
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "index is not a integer: {}",
                 index.kind()
-            ))),
+            )))
+            .into(),
         }
     }
 
-    fn eval_hash_index_expression(&self, hash: Hash, index: Object) -> Object {
-        let key = match index {
-            Object::Integer(o) => o.hash_key(),
-            Object::Str(o) => o.hash_key(),
-            Object::Boolean(o) => o.hash_key(),
+    fn eval_hash_index_expression(&self, hash: &Hash, index: &Rc<Object>) -> Rc<Object> {
+        let key = match **index {
+            Object::Integer(ref o) => o.hash_key(),
+            Object::Str(ref o) => o.hash_key(),
+            Object::Boolean(ref o) => o.hash_key(),
             _ => {
-                return Object::RuntimeError(RuntimeError::new(format!(
+                return Rc::new(Object::RuntimeError(RuntimeError::new(format!(
                     "unusable as hash key: {}",
                     index.kind()
-                )))
+                ))))
             }
         };
 
-        hash.value.get::<String>(&key.stringify())
-            .unwrap_or(&Object::Null(Null::default())).to_owned()
+        Rc::clone(
+            hash.value
+                .get::<String>(&key.stringify())
+                .unwrap_or(&Rc::clone(&self.env.borrow().null_object)),
+        )
     }
 
-    fn eval_prefix_expression(&mut self, operator: String, right: Object) -> Object {
+    fn eval_prefix_expression(&mut self, operator: String, right: Rc<Object>) -> Rc<Object> {
         match operator.as_str() {
             "!" => self.eval_bang_operator_expression(right),
             "-" => self.eval_minux_operator_expression(right),
@@ -285,28 +295,35 @@ impl<'a> Evaluator<'a> {
                 "unknown operator: {}{}",
                 operator,
                 right.kind()
-            ))),
+            )))
+            .into(),
         }
     }
 
-    fn eval_infix_expression(&self, operator: String, left: Object, right: Object) -> Object {
+    fn eval_infix_expression(
+        &self,
+        operator: String,
+        left: &Rc<Object>,
+        right: &Rc<Object>,
+    ) -> Rc<Object> {
         if left.kind() != right.kind() {
             return Object::RuntimeError(RuntimeError::new(format!(
                 "type mismatch: {} {} {}",
                 left.kind(),
                 operator,
                 right.kind()
-            )));
+            )))
+            .into();
         }
 
-        if let Object::Integer(ref left) = left {
-            if let Object::Integer(ref right) = right {
+        if let Object::Integer(ref left) = **left {
+            if let Object::Integer(ref right) = **right {
                 return self.eval_integer_infix_expression(operator, left, right);
             }
         }
 
-        if let Object::Str(ref left) = left {
-            if let Object::Str(ref right) = right {
+        if let Object::Str(ref left) = **left {
+            if let Object::Str(ref right) = **right {
                 return self.eval_string_infix_expression(operator, left, right);
             }
         }
@@ -325,19 +342,26 @@ impl<'a> Evaluator<'a> {
                 left.kind(),
                 operator,
                 right.kind()
-            ))),
+            )))
+            .into(),
         }
     }
 
-    fn eval_string_infix_expression(&self, operator: String, left: &Str, right: &Str) -> Object {
+    fn eval_string_infix_expression(
+        &self,
+        operator: String,
+        left: &Str,
+        right: &Str,
+    ) -> Rc<Object> {
         match operator.as_str() {
-            "+" => Object::Str(Str::new(format!("{}{}", left.value, right.value))),
+            "+" => Object::Str(Str::new(format!("{}{}", left.value, right.value))).into(),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "unknown operator: {} {} {}",
                 left.kind(),
                 operator,
                 right.kind(),
-            ))),
+            )))
+            .into(),
         }
     }
 
@@ -346,15 +370,15 @@ impl<'a> Evaluator<'a> {
         operator: String,
         left: &Integer,
         right: &Integer,
-    ) -> Object {
+    ) -> Rc<Object> {
         let left_value = left.value;
         let right_value = right.value;
 
         match operator.as_str() {
-            "+" => Object::Integer(Integer::new(left_value + right_value)),
-            "-" => Object::Integer(Integer::new(left_value - right_value)),
-            "*" => Object::Integer(Integer::new(left_value * right_value)),
-            "/" => Object::Integer(Integer::new(left_value / right_value)),
+            "+" => Object::Integer(Integer::new(left_value + right_value)).into(),
+            "-" => Object::Integer(Integer::new(left_value - right_value)).into(),
+            "*" => Object::Integer(Integer::new(left_value * right_value)).into(),
+            "/" => Object::Integer(Integer::new(left_value / right_value)).into(),
             "<" => self.native_bool_to_boolean_object(left_value < right_value),
             ">" => self.native_bool_to_boolean_object(left_value > right_value),
             "==" => self.native_bool_to_boolean_object(left_value == right_value),
@@ -364,11 +388,12 @@ impl<'a> Evaluator<'a> {
                 left.kind(),
                 operator,
                 right.kind()
-            ))),
+            )))
+            .into(),
         }
     }
 
-    fn eval_hash_literal(&mut self, node: &HashLiteral) -> Object {
+    fn eval_hash_literal(&mut self, node: &HashLiteral) -> Rc<Object> {
         let mut hash_value = HashMap::new();
 
         for member in node.members.iter() {
@@ -378,15 +403,16 @@ impl<'a> Evaluator<'a> {
                 return key;
             }
 
-            let hash_key = match key {
-                Object::Str(o) => o.hash_key(),
-                Object::Integer(o) => o.hash_key(),
-                Object::Boolean(o) => o.hash_key(),
+            let hash_key = match *key {
+                Object::Str(ref o) => o.hash_key(),
+                Object::Integer(ref o) => o.hash_key(),
+                Object::Boolean(ref o) => o.hash_key(),
                 _ => {
                     return Object::RuntimeError(RuntimeError::new(format!(
                         "only string, integer and boolean can be hash key, found {}",
                         key.kind()
                     )))
+                    .into()
                 }
             };
 
@@ -398,34 +424,35 @@ impl<'a> Evaluator<'a> {
             hash_value.insert(hash_key.stringify(), value);
         }
 
-        Object::Hash(Hash::new(hash_value))
+        Object::Hash(Hash::new(hash_value)).into()
     }
 
-    fn eval_bang_operator_expression(&self, right: Object) -> Object {
-        match right {
-            Object::Boolean(object) => {
+    fn eval_bang_operator_expression(&self, right: Rc<Object>) -> Rc<Object> {
+        match *right {
+            Object::Boolean(ref object) => {
                 if object.value {
-                    Object::Boolean(Boolean::new(false))
+                    Rc::clone(&self.env.borrow().false_object)
                 } else {
-                    Object::Boolean(Boolean::new(true))
+                    Rc::clone(&self.env.borrow().true_object)
                 }
             }
-            Object::Null(_) => Object::Null(Null {}),
-            _ => Object::Boolean(Boolean::new(false)),
+            Object::Null(_) => Rc::clone(&self.env.borrow().null_object),
+            _ => Rc::clone(&self.env.borrow().false_object),
         }
     }
 
-    fn eval_minux_operator_expression(&self, right: Object) -> Object {
-        match right {
-            Object::Integer(object) => Object::Integer(Integer::new(-object.value)),
+    fn eval_minux_operator_expression(&self, right: Rc<Object>) -> Rc<Object> {
+        match *right {
+            Object::Integer(ref object) => Object::Integer(Integer::new(-object.value)).into(),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "unknown operator: -{}",
                 right.kind()
-            ))),
+            )))
+            .into(),
         }
     }
 
-    fn eval_if_expression(&mut self, ie: &IfExpression) -> Object {
+    fn eval_if_expression(&mut self, ie: &IfExpression) -> Rc<Object> {
         let condition = self.eval(Node::Expression(&ie.condition));
 
         if self.is_error(&condition) {
@@ -438,46 +465,48 @@ impl<'a> Evaluator<'a> {
             return self.eval(Node::BlockStatement(alternative));
         }
 
-        Object::Null(Null {})
+        Rc::clone(&self.env.borrow().null_object)
     }
 
-    fn eval_indentifier(&self, node: &Identifier) -> Object {
+    fn eval_indentifier(&self, node: &Identifier) -> Rc<Object> {
         if let Some(value) = self.env.borrow().get(node.value.to_owned()) {
             value
         } else if self.builtin.function_exists(&node.value) {
-            Object::BuiltinFunction(BuiltinFunction::new(node.value.to_owned()))
+            Rc::new(Object::BuiltinFunction(BuiltinFunction::new(
+                node.value.to_owned(),
+            )))
         } else {
-            Object::RuntimeError(RuntimeError::new(format!(
+            Rc::new(Object::RuntimeError(RuntimeError::new(format!(
                 "identifier not found: {}",
                 node.value
-            )))
+            ))))
         }
     }
 
-    fn native_bool_to_boolean_object(&self, input: bool) -> Object {
+    fn native_bool_to_boolean_object(&self, input: bool) -> Rc<Object> {
         if input {
-            Object::Boolean(Boolean::new(true))
+            Rc::clone(&self.env.borrow().true_object)
         } else {
-            Object::Boolean(Boolean::new(false))
+            Rc::clone(&self.env.borrow().false_object)
         }
     }
 
-    fn is_truthy(&self, object: Object) -> bool {
-        match object {
+    fn is_truthy(&self, object: Rc<Object>) -> bool {
+        match *object {
             Object::Null(_) => false,
-            Object::Boolean(obj) => obj.value,
+            Object::Boolean(ref obj) => obj.value,
             _ => true,
         }
     }
 
-    fn is_error(&self, object: &Object) -> bool {
-        matches!(object, Object::RuntimeError(_))
+    fn is_error(&self, object: &Rc<Object>) -> bool {
+        matches!(**object, Object::RuntimeError(_))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, rc::Rc};
 
     use super::Evaluator;
     use crate::{
@@ -488,7 +517,7 @@ mod tests {
         parser::Parser,
     };
 
-    fn test_eval(input: &str) -> Object {
+    fn test_eval(input: &str) -> Rc<Object> {
         let mut lexer = Lexer::new(input.into());
         let mut parser = Parser::new(&mut lexer);
         let env = Enviroment::default();
@@ -497,36 +526,36 @@ mod tests {
         evaluator.eval(Node::Program(&program))
     }
 
-    fn test_integer_object(object: Object, expected: i64) {
-        if let Object::Integer(integer) = object {
+    fn test_integer_object(object: &Rc<Object>, expected: i64) {
+        if let Object::Integer(ref integer) = **object {
             assert_eq!(integer.value, expected);
         } else {
             panic!("not a integer");
         }
     }
 
-    fn test_string_object(object: Object, expected: String) {
-        if let Object::Str(string) = object {
+    fn test_string_object(object: &Rc<Object>, expected: String) {
+        if let Object::Str(ref string) = **object {
             assert_eq!(string.value, expected);
         } else {
             panic!("not a string");
         }
     }
 
-    fn test_boolean_object(object: Object, expected: bool) {
-        if let Object::Boolean(bool) = object {
+    fn test_boolean_object(object: &Rc<Object>, expected: bool) {
+        if let Object::Boolean(ref bool) = **object {
             assert_eq!(bool.value, expected);
         } else {
             panic!("not a boolean");
         }
     }
 
-    fn test_null_object(object: Object) {
-        assert!(matches!(object, Object::Null(_)))
+    fn test_null_object(object: &Rc<Object>) {
+        assert!(matches!(**object, Object::Null(_)))
     }
 
-    fn test_error_object(object: Object, expected: String) {
-        if let Object::RuntimeError(error) = object {
+    fn test_error_object(object: &Rc<Object>, expected: String) {
+        if let Object::RuntimeError(ref error) = **object {
             assert_eq!(error.inspect(), format!("Error: {}", expected));
         } else {
             panic!("not a error")
@@ -554,7 +583,7 @@ mod tests {
         ];
 
         for (input, output) in tests.iter() {
-            test_integer_object(test_eval(input), *output);
+            test_integer_object(&test_eval(input), *output);
         }
     }
 
@@ -583,7 +612,7 @@ mod tests {
         ];
 
         for (input, output) in tests.iter() {
-            test_boolean_object(test_eval(input), *output);
+            test_boolean_object(&test_eval(input), *output);
         }
     }
 
@@ -599,7 +628,7 @@ mod tests {
         ];
 
         for (input, output) in tests.iter() {
-            test_boolean_object(test_eval(input), *output);
+            test_boolean_object(&test_eval(input), *output);
         }
     }
 
@@ -618,9 +647,9 @@ mod tests {
         for (input, output) in tests.iter() {
             let evaluated = test_eval(input);
             if let Some(integer) = output {
-                test_integer_object(evaluated, *integer as i64);
+                test_integer_object(&evaluated, *integer as i64);
             } else {
-                test_null_object(evaluated);
+                test_null_object(&evaluated);
             }
         }
     }
@@ -645,7 +674,7 @@ mod tests {
 
         for (input, output) in tests.iter() {
             println!("{} = {}", input, output);
-            test_integer_object(test_eval(input), *output);
+            test_integer_object(&test_eval(input), *output);
         }
     }
 
@@ -680,7 +709,7 @@ mod tests {
         for (input, output) in tests.iter() {
             println!("{} => {}", input, output);
             let evaluated = test_eval(input);
-            test_error_object(evaluated, output.to_string());
+            test_error_object(&evaluated, output.to_string());
         }
     }
 
@@ -694,7 +723,7 @@ mod tests {
         ];
 
         for (input, output) in tests.iter() {
-            test_integer_object(test_eval(input), *output);
+            test_integer_object(&test_eval(input), *output);
         }
     }
 
@@ -703,7 +732,7 @@ mod tests {
         let input = "fn(x) { x + 2 };";
         let evaluated = test_eval(input);
 
-        if let Object::Function(object) = evaluated {
+        if let Object::Function(ref object) = *evaluated {
             assert_eq!(object.parameters.len(), 1);
             assert_eq!(object.parameters[0].value, "x".to_string());
             assert_eq!(format!("{}", object.body), "(x + 2)");
@@ -724,7 +753,7 @@ mod tests {
         ];
 
         for (input, output) in tests.iter() {
-            test_integer_object(test_eval(input), *output);
+            test_integer_object(&test_eval(input), *output);
         }
     }
 
@@ -738,21 +767,21 @@ mod tests {
             addTwo(2);
         ";
 
-        test_integer_object(test_eval(input), 4);
+        test_integer_object(&test_eval(input), 4);
     }
 
     #[test]
     fn test_string_literal() {
         let input = "\"Hello world!\"";
 
-        test_string_object(test_eval(input), "Hello world!".into());
+        test_string_object(&test_eval(input), "Hello world!".into());
     }
 
     #[test]
     fn test_string_concatenation() {
         let input = "\"Hello\" + \" \" + \"world!\"";
 
-        test_string_object(test_eval(input), "Hello world!".into());
+        test_string_object(&test_eval(input), "Hello world!".into());
     }
 
     #[test]
@@ -774,11 +803,11 @@ mod tests {
         ];
 
         for (input, output) in number_tests.iter() {
-            test_integer_object(test_eval(input), *output);
+            test_integer_object(&test_eval(input), *output);
         }
 
         for (input, output) in error_tests.iter() {
-            test_error_object(test_eval(input), output.to_string());
+            test_error_object(&test_eval(input), output.to_string());
         }
     }
 
@@ -798,10 +827,10 @@ mod tests {
 
         let evaluated = test_eval(input);
 
-        if let Object::Array(array) = evaluated {
-            test_integer_object(array.elements[0].to_owned(), 1);
-            test_integer_object(array.elements[1].to_owned(), 4);
-            test_integer_object(array.elements[2].to_owned(), 6)
+        if let Object::Array(ref array) = *evaluated {
+            test_integer_object(&array.elements[0], 1);
+            test_integer_object(&array.elements[1], 4);
+            test_integer_object(&array.elements[2], 6)
         } else {
             panic!("not a array")
         }
@@ -826,11 +855,11 @@ mod tests {
         let null_tests = ["[1, 2, 3][3]", "[1, 2, 3][-1]"];
 
         for (input, output) in tests.iter() {
-            test_integer_object(test_eval(input), *output);
+            test_integer_object(&test_eval(input), *output);
         }
 
         for input in null_tests {
-            test_null_object(test_eval(input));
+            test_null_object(&test_eval(input));
         }
     }
 
@@ -849,31 +878,31 @@ mod tests {
 "#;
         let evaluated = test_eval(input);
 
-        if let Object::Hash(hash) = evaluated {
-            let expected = HashMap::from([
+        if let Object::Hash(ref hash) = *evaluated {
+            let expected: HashMap<String, Rc<Object>> = HashMap::from([
                 (
                     Str::new("one".into()).hash_key().stringify(),
-                    Object::Integer(Integer::new(1)),
+                    Object::Integer(Integer::new(1)).into(),
                 ),
                 (
                     Str::new("two".into()).hash_key().stringify(),
-                    Object::Integer(Integer::new(2)),
+                    Object::Integer(Integer::new(2)).into(),
                 ),
                 (
                     Str::new("three".into()).hash_key().stringify(),
-                    Object::Integer(Integer::new(3)),
+                    Object::Integer(Integer::new(3)).into(),
                 ),
                 (
                     Integer::new(4).hash_key().stringify(),
-                    Object::Integer(Integer::new(4)),
+                    Object::Integer(Integer::new(4)).into(),
                 ),
                 (
                     Boolean::new(true).hash_key().stringify(),
-                    Object::Integer(Integer::new(5)),
+                    Object::Integer(Integer::new(5)).into(),
                 ),
                 (
                     Boolean::new(false).hash_key().stringify(),
-                    Object::Integer(Integer::new(6)),
+                    Object::Integer(Integer::new(6)).into(),
                 ),
             ]);
             assert_eq!(hash.value, expected);
@@ -895,11 +924,11 @@ mod tests {
         let null_tests = [r#"{"foo": 5}["bar"]"#, r#"{}["foo"]"#];
 
         for (input, output) in tests.iter() {
-            test_integer_object(test_eval(input), *output);
+            test_integer_object(&test_eval(input), *output);
         }
 
         for input in null_tests.iter() {
-            test_null_object(test_eval(input));
+            test_null_object(&test_eval(input));
         }
     }
 }

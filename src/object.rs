@@ -195,13 +195,13 @@ impl Inspector for Null {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ReturnValue {
-    pub value: Box<Object>,
+    pub value: Rc<Object>,
 }
 
 impl ReturnValue {
-    pub fn new(value: Object) -> Self {
+    pub fn new(value: Rc<Object>) -> Self {
         Self {
-            value: Box::new(value),
+            value
         }
     }
 }
@@ -299,11 +299,11 @@ impl Inspector for BuiltinFunction {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Array {
-    pub elements: Vec<Object>,
+    pub elements: Vec<Rc<Object>>,
 }
 
 impl Array {
-    pub fn new(elements: Vec<Object>) -> Self {
+    pub fn new(elements: Vec<Rc<Object>>) -> Self {
         Self { elements }
     }
 }
@@ -327,11 +327,11 @@ impl Inspector for Array {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Hash {
-    pub value: HashMap<String, Object>,
+    pub value: HashMap<String, Rc<Object>>,
 }
 
 impl Hash {
-    pub fn new(value: HashMap<String, Object>) -> Self {
+    pub fn new(value: HashMap<String, Rc<Object>>) -> Self {
         Self { value }
     }
 }
