@@ -7,7 +7,7 @@ use crate::{
     enviroment::Enviroment,
 };
 
-#[derive(Debug, Eq, Hash, PartialEq, Clone)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub enum ObjectKind {
     Integer,
     Str,
@@ -38,7 +38,7 @@ impl Display for ObjectKind {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub enum Object {
     Integer(Integer),
     Str(Str),
@@ -93,7 +93,7 @@ pub trait HashKeyable {
     fn hash_key(&self) -> HashKey;
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct Integer {
     pub value: i64,
 }
@@ -120,7 +120,7 @@ impl HashKeyable for Integer {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct Str {
     pub value: String,
 }
@@ -149,7 +149,7 @@ impl HashKeyable for Str {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct Boolean {
     pub value: bool,
 }
@@ -180,7 +180,7 @@ impl HashKeyable for Boolean {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Default)]
 pub struct Null {}
 
 impl Inspector for Null {
@@ -193,7 +193,7 @@ impl Inspector for Null {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct ReturnValue {
     pub value: Rc<Object>,
 }
@@ -216,7 +216,7 @@ impl Inspector for ReturnValue {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct RuntimeError {
     pub message: String,
 }
@@ -237,7 +237,7 @@ impl Inspector for RuntimeError {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct Function {
     pub parameters: Vec<Identifier>,
     pub body: BlockStatement,
@@ -276,7 +276,7 @@ impl Inspector for Function {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct BuiltinFunction {
     pub name: String,
 }
@@ -297,7 +297,7 @@ impl Inspector for BuiltinFunction {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct Array {
     pub elements: Vec<Rc<Object>>,
 }
@@ -325,7 +325,7 @@ impl Inspector for Array {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct Hash {
     pub value: HashMap<HashKey, Rc<Object>>,
 }
@@ -353,7 +353,7 @@ impl Inspector for Hash {
     }
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Clone)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub struct HashKey {
     pub kind: ObjectKind,
     pub name: String,
