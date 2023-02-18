@@ -20,6 +20,7 @@ pub enum ObjectKind {
     Array,
     Hash,
     Quote,
+    Macro,
 }
 
 impl Display for ObjectKind {
@@ -36,6 +37,7 @@ impl Display for ObjectKind {
             Self::Array => write!(f, "ARRAY"),
             Self::Hash => write!(f, "HASH"),
             Self::Quote => write!(f, "QUOTE"),
+            Self::Macro => write!(f, "MACRO"),
         }
     }
 }
@@ -53,6 +55,7 @@ pub enum Object {
     Function(Function),
     BuiltinFunction(BuiltinFunction),
     Quote(Quote),
+    Macro(Macro),
 }
 
 impl Object {
@@ -69,6 +72,7 @@ impl Object {
             Self::Function(o) => o.kind(),
             Self::BuiltinFunction(o) => o.kind(),
             Self::Quote(o) => o.kind(),
+            Self::Macro(o) => o.kind(),
         }
     }
 
@@ -85,6 +89,7 @@ impl Object {
             Self::Function(o) => o.inspect(),
             Self::BuiltinFunction(o) => o.inspect(),
             Self::Quote(o) => o.inspect(),
+            Self::Macro(o) => o.inspect(),
         }
     }
 }
@@ -273,6 +278,45 @@ impl Inspector for Function {
     fn inspect(&self) -> String {
         format!(
             "fn({}) {{\n{}\n}}",
+            self.parameters
+                .iter()
+                .map(|i| format!("{}", i))
+                .collect::<Vec<String>>()
+                .join(", "),
+            self.body
+        )
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Macro {
+    pub parameters: Vec<Identifier>,
+    pub body: BlockStatement,
+    pub env: Rc<RefCell<Enviroment>>,
+}
+
+impl Macro {
+    pub fn new(
+        parameters: Vec<Identifier>,
+        body: BlockStatement,
+        env: Rc<RefCell<Enviroment>>,
+    ) -> Self {
+        Self {
+            parameters,
+            body,
+            env,
+        }
+    }
+}
+
+impl Inspector for Macro {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Function
+    }
+
+    fn inspect(&self) -> String {
+        format!(
+            "macro({}) {{\n{}\n}}",
             self.parameters
                 .iter()
                 .map(|i| format!("{}", i))

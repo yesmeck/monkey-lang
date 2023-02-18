@@ -38,6 +38,7 @@ pub enum TokenKind {
     If,
     Else,
     Return,
+    Macro,
 }
 
 #[derive(Debug, PartialEq)]
@@ -53,6 +54,7 @@ impl Token {
             "if" => Token(TokenKind::If, value.into()),
             "else" => Token(TokenKind::Else, value.into()),
             "return" => Token(TokenKind::Return, value.into()),
+            "macro" => Token(TokenKind::Macro, value.into()),
             _ => Token(TokenKind::Ident, value.into()),
         }
     }

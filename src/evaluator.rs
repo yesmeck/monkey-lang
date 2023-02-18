@@ -3,94 +3,20 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::ast::{
-    ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
-    ExpressionStatement, FunctionLiteral, HashLiteral, HashMember, Identifier, IfExpression,
-    IndexExpression, InfixExpression, IntegerLiteral, LetStatement, NullLiteral, PrefixExpression,
-    Program, ReturnStatement, Statement, StringLiteral,
+    ArrayLiteral, BlockStatement, FunctionLiteral, HashLiteral, Identifier, IfExpression,
+    IndexExpression, InfixExpression, LetStatement, PrefixExpression,
+    Program, ReturnStatement, Statement, CallExpression,
 };
+use crate::ast::Expression;
 use crate::builtin::Builtin;
 use crate::enviroment::Enviroment;
+use crate::makro::{EvalUnqupteCalls, MacroExpension};
 use crate::object::{
-    Array, BuiltinFunction, Function, Hash, HashKeyable, Inspector, Integer, Object, ObjectKind,
+    Array, BuiltinFunction, Function, HashKeyable, Inspector, Integer, Object,
     Quote, ReturnValue, RuntimeError, Str,
 };
-use crate::traverser::{Traverable, Visitor};
-
-struct EvalUnqupteCalls {
-    env: Rc<RefCell<Enviroment>>,
-}
-
-impl EvalUnqupteCalls {
-    pub fn new(env: Rc<RefCell<Enviroment>>) -> Self {
-        Self { env }
-    }
-}
-
-impl EvalUnqupteCalls {
-    fn convert_object_to_ast_node(object: &Object) -> Expression {
-        match *object {
-            Object::Integer(ref integer) => {
-                Expression::IntegerLiteral(IntegerLiteral::new(integer.value.to_owned()))
-            }
-            Object::Str(ref str) => {
-                Expression::StringLiteral(StringLiteral::new(str.value.to_owned()))
-            }
-            Object::Boolean(ref bool) => {
-                Expression::Boolean(BooleanExpression::new(bool.value.to_owned()))
-            }
-            Object::Null(_) => Expression::NullLiteral(NullLiteral::default()),
-            Object::Array(ref array) => Expression::ArrayLiteral(ArrayLiteral::new(
-                array
-                    .elements
-                    .iter()
-                    .map(|e| EvalUnqupteCalls::convert_object_to_ast_node(e))
-                    .collect(),
-            )),
-            Object::Hash(ref hash) => Expression::HashLiteral(HashLiteral::new(
-                hash.value
-                    .iter()
-                    .map(|(k, v)| {
-                        let key = match k.kind {
-                            ObjectKind::Boolean => Expression::Boolean(BooleanExpression::new(
-                                k.name.parse::<bool>().unwrap(),
-                            )),
-                            ObjectKind::Integer => Expression::IntegerLiteral(IntegerLiteral::new(
-                                k.name.parse::<i64>().unwrap(),
-                            )),
-                            ObjectKind::Str => {
-                                Expression::StringLiteral(StringLiteral::new(k.name.to_owned()))
-                            }
-                            _ => Expression::NullLiteral(NullLiteral::default()),
-                        };
-                        let value = EvalUnqupteCalls::convert_object_to_ast_node(v);
-                        HashMember::new(key, value)
-                    })
-                    .collect(),
-            )),
-            Object::Quote(ref quote) => quote.node.to_owned(),
-            _ => Expression::NullLiteral(NullLiteral::default()),
-        }
-    }
-}
-
-impl Visitor for EvalUnqupteCalls {
-    fn visit_mut_expression(&self, node: &mut Expression) {
-        if let Expression::Call(ref call) = *node {
-            if let Expression::Identifier(ref callee) = *call.callee {
-                if callee.value == "unquote" && call.arguments.len() == 1 {
-                    let mut program = Program {
-                        statements: vec![Statement::Expression(ExpressionStatement::new(
-                            call.arguments[0].to_owned(),
-                        ))],
-                    };
-                    let mut evaluator = Evaluator::new(Rc::clone(&self.env));
-                    let object = evaluator.eval(&mut program);
-                    *node = EvalUnqupteCalls::convert_object_to_ast_node(&object);
-                }
-            }
-        }
-    }
-}
+use crate::object::Hash;
+use crate::traverser::Traverable;
 
 #[derive(Debug)]
 pub struct Evaluator<'a> {
@@ -107,6 +33,10 @@ impl<'a> Evaluator<'a> {
     }
 
     pub fn eval(&mut self, program: &mut Program) -> Rc<Object> {
+        let makro = MacroExpension::new(Rc::clone(&self.env));
+        makro.define_macros(program);
+        makro.expand_macros(program);
+
         self.eval_program(program)
     }
 
@@ -129,6 +59,7 @@ impl<'a> Evaluator<'a> {
             Expression::Index(node) => self.eval_index_expression(node),
             Expression::Boolean(node) => self.native_bool_to_boolean_object(node.value),
             Expression::FunctionLiteral(node) => self.eval_function_literal(node),
+            Expression::MacroLiteral(_) => Rc::clone(&self.env.borrow().null_object),
             Expression::Prefix(node) => self.eval_prefix_expression(node),
             Expression::Infix(node) => self.eval_infix_expression(node),
             Expression::If(node) => self.eval_if_expression(node),
@@ -265,7 +196,7 @@ impl<'a> Evaluator<'a> {
         result
     }
 
-    fn eval_expressions(&mut self, exps: &Vec<Expression>) -> Vec<Rc<Object>> {
+    fn eval_expressions(&mut self, exps: &[Expression]) -> Vec<Rc<Object>> {
         let mut result: Vec<_> = vec![];
 
         for exp in exps.iter() {

@@ -49,3 +49,10 @@ let map = fn(arr, f) {
 let numbers = [1, 1 + 1, 4 - 1, 2 * 2, 2 + 3, 12 / 2];
 
 map(numbers, fibonacci);
+
+
+let reverse = macro(a, b) {
+  quote(unquote(b) - unquote(a)); 
+};
+
+reverse(2 + 2, 10 - 5);

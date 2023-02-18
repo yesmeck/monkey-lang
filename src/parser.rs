@@ -4,8 +4,8 @@ use crate::{
     ast::{
         ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
         ExpressionStatement, FunctionLiteral, HashLiteral, HashMember, Identifier, IfExpression,
-        IndexExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program,
-        ReturnStatement, Statement, StringLiteral,
+        IndexExpression, InfixExpression, IntegerLiteral, LetStatement, MacroLiteral,
+        PrefixExpression, Program, ReturnStatement, Statement, StringLiteral,
     },
     lexer::Lexer,
     token::{Token, TokenKind},
@@ -143,7 +143,7 @@ impl<'a> Parser<'a> {
             members.push(HashMember::new(key, value));
 
             if !self.peek_token_is(&TokenKind::Rbrace) && !self.expect_peek(TokenKind::Comma) {
-                return None
+                return None;
             }
         }
 
@@ -177,6 +177,24 @@ impl<'a> Parser<'a> {
         }
 
         list
+    }
+
+    fn parse_macro_literal(&mut self) -> Option<Expression> {
+        if !self.expect_peek(TokenKind::Lparen) {
+            return None;
+        }
+
+        let parameters = self.parse_function_parameters();
+
+        if !self.expect_peek(TokenKind::Lbrace) {
+            return None;
+        }
+
+        if let Some(body) = self.parse_block_statement() {
+            return Some(Expression::MacroLiteral(MacroLiteral { parameters, body }));
+        }
+
+        None
     }
 
     fn parse_function_literal(&mut self) -> Option<Expression> {
@@ -418,6 +436,7 @@ impl<'a> Parser<'a> {
             TokenKind::Int => self.parse_integer_literal(),
             TokenKind::String => self.parse_string_literal(),
             TokenKind::Function => self.parse_function_literal(),
+            TokenKind::Macro => self.parse_macro_literal(),
             TokenKind::Lparen => self.parse_grouped_expression(),
             TokenKind::Lbracket => self.parse_array_literal(),
             TokenKind::Lbrace => self.parse_hash_literal(),
@@ -476,7 +495,7 @@ mod tests {
             ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
             ExpressionStatement, FunctionLiteral, HashLiteral, HashMember, Identifier,
             IfExpression, IndexExpression, InfixExpression, IntegerLiteral, LetStatement,
-            PrefixExpression, Program, ReturnStatement, Statement, StringLiteral,
+            MacroLiteral, PrefixExpression, Program, ReturnStatement, Statement, StringLiteral,
         },
         lexer::Lexer,
     };
@@ -969,6 +988,39 @@ return y;
                             ))
                         )
                     ]))
+                ))]
+            }
+        );
+    }
+
+    #[test]
+    fn test_macro_literal_parsing() {
+        let input = "macro(x, y) { x + y; }";
+
+        let mut lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(
+            program,
+            Program {
+                statements: vec![Statement::Expression(ExpressionStatement::new(
+                    Expression::MacroLiteral(MacroLiteral::new(
+                        vec![Identifier::new("x".into()), Identifier::new("y".into()),],
+                        BlockStatement {
+                            statements: vec![Statement::Expression(ExpressionStatement::new(
+                                Expression::Infix(InfixExpression {
+                                    operator: "+".into(),
+                                    left: Box::new(Expression::Identifier(Identifier::new(
+                                        "x".into()
+                                    ))),
+                                    right: Box::new(Expression::Identifier(Identifier::new(
+                                        "y".into()
+                                    ))),
+                                })
+                            ))]
+                        }
+                    ))
                 ))]
             }
         );

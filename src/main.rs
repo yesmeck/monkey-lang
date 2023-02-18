@@ -17,6 +17,7 @@ mod parser;
 mod repl;
 mod token;
 mod traverser;
+mod makro;
 
 fn main() {
     let mut args = args();

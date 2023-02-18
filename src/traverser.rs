@@ -2,7 +2,7 @@ use crate::ast::{
     ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
     ExpressionStatement, FunctionLiteral, HashLiteral, Identifier, IfExpression, IndexExpression,
     InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
-    Statement, StringLiteral, NullLiteral,
+    Statement, StringLiteral, NullLiteral, MacroLiteral,
 };
 
 pub trait Visitor {
@@ -16,6 +16,7 @@ pub trait Visitor {
     fn visit_mut_array_literal(&self, _node: &mut ArrayLiteral) {}
     fn visit_mut_hash_literal(&self, _node: &mut HashLiteral) {}
     fn visit_mut_function_literal(&self, _node: &mut FunctionLiteral) {}
+    fn visit_mut_macro_literal(&self, _node: &mut MacroLiteral) {}
     fn visit_mut_identifer(&self, _node: &mut Identifier) {}
     fn visit_mut_expression(&self, _node: &mut Expression) {}
     fn visit_mut_boolean_expression(&self, _node: &mut BooleanExpression) {}
@@ -67,6 +68,7 @@ impl Traverable for Expression {
             Expression::ArrayLiteral(n) => n.visit_mut(visitor),
             Expression::HashLiteral(n) => n.visit_mut(visitor),
             Expression::FunctionLiteral(n) => n.visit_mut(visitor),
+            Expression::MacroLiteral(n) => n.visit_mut(visitor),
             Expression::Identifier(n) => n.visit_mut(visitor),
             Expression::Boolean(n) => n.visit_mut(visitor),
             Expression::Prefix(n) => n.visit_mut(visitor),
@@ -124,6 +126,16 @@ impl Traverable for HashLiteral {
 impl Traverable for FunctionLiteral {
     fn visit_mut(&mut self, visitor: &impl Visitor) {
         visitor.visit_mut_function_literal(self);
+        for parameter in self.parameters.iter_mut() {
+            parameter.visit_mut(visitor);
+        }
+        self.body.visit_mut(visitor);
+    }
+}
+
+impl Traverable for MacroLiteral {
+    fn visit_mut(&mut self, visitor: &impl Visitor) {
+        visitor.visit_mut_macro_literal(self);
         for parameter in self.parameters.iter_mut() {
             parameter.visit_mut(visitor);
         }

@@ -97,6 +97,7 @@ pub enum Expression {
     ArrayLiteral(ArrayLiteral),
     HashLiteral(HashLiteral),
     FunctionLiteral(FunctionLiteral),
+    MacroLiteral(MacroLiteral),
     Boolean(BooleanExpression),
     Prefix(PrefixExpression),
     Infix(InfixExpression),
@@ -115,6 +116,7 @@ impl Display for Expression {
             Self::ArrayLiteral(e) => write!(f, "{}", e),
             Self::HashLiteral(e) => write!(f, "{}", e),
             Self::FunctionLiteral(e) => write!(f, "{}", e),
+            Self::MacroLiteral(e) => write!(f, "{}", e),
             Self::Boolean(e) => write!(f, "{}", e),
             Self::Prefix(e) => write!(f, "{}", e),
             Self::Infix(e) => write!(f, "{}", e),
@@ -259,7 +261,40 @@ pub struct FunctionLiteral {
     pub body: BlockStatement,
 }
 
+impl FunctionLiteral {
+    pub fn new(parameters: Vec<Identifier>, body: BlockStatement) -> Self {
+        Self { parameters, body }
+    }
+}
+
 impl Display for FunctionLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "fn({}) {}",
+            self.parameters
+                .iter()
+                .map(|p| format!("{}", p))
+                .collect::<Vec<String>>()
+                .join(", "),
+            self.body
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct MacroLiteral {
+    pub parameters: Vec<Identifier>,
+    pub body: BlockStatement,
+}
+
+impl MacroLiteral {
+    pub fn new(parameters: Vec<Identifier>, body: BlockStatement) -> Self {
+        Self { parameters, body }
+    }
+}
+
+impl Display for MacroLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

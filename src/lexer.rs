@@ -195,6 +195,7 @@ if (5 < 10) {
 \"foo bar\"
 [1, 2];
 {\"foo\": \"bar\"}
+macro(x, y) { x + y; };
 ";
         let mut lexer = Lexer::new(input.into());
 
@@ -285,6 +286,19 @@ if (5 < 10) {
             Token(TokenKind::Colon, ":".into()),
             Token(TokenKind::String, "bar".into()),
             Token(TokenKind::Rbrace, "}".into()),
+            Token(TokenKind::Macro, "macro".into()),
+            Token(TokenKind::Lparen, "(".into()),
+            Token(TokenKind::Ident, "x".into()),
+            Token(TokenKind::Comma, ",".into()),
+            Token(TokenKind::Ident, "y".into()),
+            Token(TokenKind::Rparen, ")".into()),
+            Token(TokenKind::Lbrace, "{".into()),
+            Token(TokenKind::Ident, "x".into()),
+            Token(TokenKind::Plus, "+".into()),
+            Token(TokenKind::Ident, "y".into()),
+            Token(TokenKind::Semicolon, ";".into()),
+            Token(TokenKind::Rbrace, "}".into()),
+            Token(TokenKind::Semicolon, ";".into()),
             Token(TokenKind::Eof, "\n".into()),
         ];
 
