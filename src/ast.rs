@@ -1,12 +1,5 @@
 use std::fmt::Display;
 
-pub enum Node {
-    Program(Program),
-    Statement(Statement),
-    BlockStatement(BlockStatement),
-    Expression(Expression),
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Let(LetStatement),
@@ -98,6 +91,7 @@ impl Display for BlockStatement {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Identifier(Identifier),
+    NullLiteral(NullLiteral),
     IntegerLiteral(IntegerLiteral),
     StringLiteral(StringLiteral),
     ArrayLiteral(ArrayLiteral),
@@ -115,6 +109,7 @@ impl Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Identifier(e) => write!(f, "{}", e),
+            Self::NullLiteral(e) => write!(f, "{}", e),
             Self::IntegerLiteral(e) => write!(f, "{}", e),
             Self::StringLiteral(e) => write!(f, "{}", e),
             Self::ArrayLiteral(e) => write!(f, "{}", e),
@@ -144,6 +139,15 @@ impl Identifier {
 impl Display for Identifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct NullLiteral {}
+
+impl Display for NullLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "null")
     }
 }
 
@@ -354,14 +358,14 @@ impl Display for IfExpression {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CallExpression {
-    pub function: Box<Expression>,
+    pub callee: Box<Expression>,
     pub arguments: Vec<Expression>,
 }
 
 impl CallExpression {
     pub fn new(function: Expression, arguments: Vec<Expression>) -> Self {
         Self {
-            function: Box::new(function),
+            callee: Box::new(function),
             arguments,
         }
     }
@@ -372,7 +376,7 @@ impl Display for CallExpression {
         write!(
             f,
             "{}({})",
-            self.function,
+            self.callee,
             self.arguments
                 .iter()
                 .map(|a| format!("{}", a))

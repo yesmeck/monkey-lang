@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, Write};
+use std::{io::{self, BufRead, Write}, rc::Rc, cell::RefCell};
 
 use crate::{evaluator::Evaluator, lexer::Lexer, parser::Parser, enviroment::Enviroment};
 
@@ -38,13 +38,13 @@ impl Repl {
 
     pub fn start(&self) {
         self.prompt();
-        let env = Enviroment::default();
+        let env = Rc::new(RefCell::new(Enviroment::default()));
         let mut evaluator = Evaluator::new(env);
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             let mut lexer = Lexer::new(line.unwrap());
             let mut parser = Parser::new(&mut lexer);
-            let program = parser.parse_program();
+            let mut program = parser.parse_program();
 
             if !parser.errors.is_empty() {
                 self.print_errors(parser.errors);
@@ -52,7 +52,7 @@ impl Repl {
                 continue;
             }
 
-            let evaluated = evaluator.eval(&program);
+            let evaluated = evaluator.eval(&mut program);
             println!("{}", evaluated.inspect());
 
             self.prompt();

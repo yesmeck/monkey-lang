@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, fmt::Display, hash::Hasher, rc::R
 use fxhash::FxHasher64;
 
 use crate::{
-    ast::{BlockStatement, Identifier},
+    ast::{BlockStatement, Expression, Identifier},
     enviroment::Enviroment,
 };
 
@@ -19,6 +19,7 @@ pub enum ObjectKind {
     BuiltinFunction,
     Array,
     Hash,
+    Quote,
 }
 
 impl Display for ObjectKind {
@@ -34,6 +35,7 @@ impl Display for ObjectKind {
             Self::BuiltinFunction => write!(f, "BUILTIN"),
             Self::Array => write!(f, "ARRAY"),
             Self::Hash => write!(f, "HASH"),
+            Self::Quote => write!(f, "QUOTE"),
         }
     }
 }
@@ -50,6 +52,7 @@ pub enum Object {
     RuntimeError(RuntimeError),
     Function(Function),
     BuiltinFunction(BuiltinFunction),
+    Quote(Quote),
 }
 
 impl Object {
@@ -65,6 +68,7 @@ impl Object {
             Self::RuntimeError(o) => o.kind(),
             Self::Function(o) => o.kind(),
             Self::BuiltinFunction(o) => o.kind(),
+            Self::Quote(o) => o.kind(),
         }
     }
 
@@ -80,6 +84,7 @@ impl Object {
             Self::RuntimeError(o) => o.inspect(),
             Self::Function(o) => o.inspect(),
             Self::BuiltinFunction(o) => o.inspect(),
+            Self::Quote(o) => o.inspect(),
         }
     }
 }
@@ -145,7 +150,11 @@ impl HashKeyable for Str {
     fn hash_key(&self) -> HashKey {
         let mut hasher = FxHasher64::default();
         hasher.write(self.value.as_bytes());
-        HashKey::new(ObjectKind::Str, self.value.to_owned(), hasher.finish() as i64)
+        HashKey::new(
+            ObjectKind::Str,
+            self.value.to_owned(),
+            hasher.finish() as i64,
+        )
     }
 }
 
@@ -200,9 +209,7 @@ pub struct ReturnValue {
 
 impl ReturnValue {
     pub fn new(value: Rc<Object>) -> Self {
-        Self {
-            value
-        }
+        Self { value }
     }
 }
 
@@ -268,7 +275,7 @@ impl Inspector for Function {
             "fn({}) {{\n{}\n}}",
             self.parameters
                 .iter()
-                .map(|i| format!("{i}"))
+                .map(|i| format!("{}", i))
                 .collect::<Vec<String>>()
                 .join(", "),
             self.body
@@ -363,5 +370,26 @@ pub struct HashKey {
 impl HashKey {
     pub fn new(kind: ObjectKind, name: String, value: i64) -> Self {
         Self { kind, name, value }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Quote {
+    pub node: Expression,
+}
+
+impl Quote {
+    pub fn new(node: Expression) -> Self {
+        Self { node }
+    }
+}
+
+impl Inspector for Quote {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Quote
+    }
+
+    fn inspect(&self) -> String {
+        format!("QUOTE({})", self.node)
     }
 }
