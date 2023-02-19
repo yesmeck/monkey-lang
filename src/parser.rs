@@ -209,10 +209,10 @@ impl<'a> Parser<'a> {
         }
 
         if let Some(body) = self.parse_block_statement() {
-            return Some(Expression::FunctionLiteral(FunctionLiteral {
+            return Some(Expression::FunctionLiteral(FunctionLiteral::new(
                 parameters,
                 body,
-            }));
+            )));
         }
 
         None

@@ -308,24 +308,24 @@ mod tests {
             ),
             (
                 Statement::Expression(ExpressionStatement::new(Expression::FunctionLiteral(
-                    FunctionLiteral {
-                        parameters: vec![],
-                        body: BlockStatement {
+                    FunctionLiteral::new(
+                        vec![],
+                        BlockStatement {
                             statements: vec![Statement::Expression(
                                 ExpressionStatement::new(one()),
                             )],
                         },
-                    },
+                    ),
                 ))),
                 Statement::Expression(ExpressionStatement::new(Expression::FunctionLiteral(
-                    FunctionLiteral {
-                        parameters: vec![],
-                        body: BlockStatement {
+                    FunctionLiteral::new(
+                        vec![],
+                        BlockStatement {
                             statements: vec![Statement::Expression(
                                 ExpressionStatement::new(two()),
                             )],
                         },
-                    },
+                    ),
                 ))),
             ),
             (

@@ -20,7 +20,6 @@ pub enum ObjectKind {
     Array,
     Hash,
     Quote,
-    Macro,
 }
 
 impl Display for ObjectKind {
@@ -37,7 +36,6 @@ impl Display for ObjectKind {
             Self::Array => write!(f, "ARRAY"),
             Self::Hash => write!(f, "HASH"),
             Self::Quote => write!(f, "QUOTE"),
-            Self::Macro => write!(f, "MACRO"),
         }
     }
 }
