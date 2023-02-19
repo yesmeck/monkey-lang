@@ -255,6 +255,20 @@ mod tests {
             reverse(2 + 2, 10 - 5);",
                 "(10 - 5) - (2 + 2)",
             ),
+            (
+                r#"
+                let unless = macro(condition, consequence, alternative) {
+                    quote(if (!(unquote(condition))) {
+                        unquote(consequence);
+                    } else {
+                        unquote(alternative);
+                }); };
+                unless(10 > 5, puts("not greater"), puts("greater"));
+                "#,
+                r#"
+                if (!(10 > 5)) { puts("not greater") } else { puts("greater") }
+                "#,
+            ),
         ];
 
         for (input, output) in tests.iter() {
