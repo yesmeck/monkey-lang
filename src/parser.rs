@@ -612,7 +612,7 @@ return y;
     fn test_prefix_expression() {
         let tests = [("!5", "!", 5), ("-15", "-", 15)];
         for (input, operator, value) in tests.iter() {
-            let mut lexer = Lexer::new(input.to_string());
+            let mut lexer = Lexer::new(input);
             let mut parser = Parser::new(&mut lexer);
             let program = parser.parse_program();
 
@@ -643,7 +643,7 @@ return y;
         ];
 
         for (input, left, operator, right) in tests.iter() {
-            let mut lexer = Lexer::new(input.to_string());
+            let mut lexer = Lexer::new(input);
             let mut parser = Parser::new(&mut lexer);
             let program = parser.parse_program();
 
@@ -709,7 +709,7 @@ return y;
         ];
 
         for (input, output) in tests.iter() {
-            let mut lexer = Lexer::new(input.to_string());
+            let mut lexer = Lexer::new(input);
             let mut parser = Parser::new(&mut lexer);
             let program = parser.parse_program();
 
@@ -721,7 +721,7 @@ return y;
     fn test_if_expression() {
         let input = "if (x < y) { x } else { y }";
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 
@@ -763,7 +763,7 @@ return y;
     fn test_function_literal() {
         let input = "fn(x, y) { x + y };";
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 
@@ -799,7 +799,7 @@ return y;
     fn test_call_expression() {
         let input = "add(1, 2 * 3, 4 + 5);";
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 
@@ -832,7 +832,7 @@ return y;
     fn test_string_literal_expression() {
         let input = "\"hello world!\"";
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 
@@ -850,7 +850,7 @@ return y;
     fn test_array_literals() {
         let input = "[1,  2 * 2, 3 + 3]";
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 
@@ -880,7 +880,7 @@ return y;
     fn test_parsing_index_expressions() {
         let input = "myArray[1 + 1]";
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 
@@ -905,7 +905,7 @@ return y;
     fn test_parsing_hash_literals_string_keys() {
         let input = r#"{"one": 1, "two": 2, "three": 3}"#;
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 
@@ -936,7 +936,7 @@ return y;
     fn test_parsing_empty_hash_literal() {
         let input = "{}";
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 
@@ -954,7 +954,7 @@ return y;
     fn test_parsing_hash_literals_with_expressions() {
         let input = r#"{"one": 0 + 1, "two": 10 - 8, "three": 15 / 5}"#;
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 
@@ -997,7 +997,7 @@ return y;
     fn test_macro_literal_parsing() {
         let input = "macro(x, y) { x + y; }";
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let program = parser.parse_program();
 

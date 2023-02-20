@@ -539,7 +539,7 @@ mod tests {
         enviroment::Enviroment,
         lexer::Lexer,
         object::{Boolean, HashKey, HashKeyable, Inspector, Integer, Object, Str},
-        parser::Parser,
+        parser::Parser, test_helper::test_integer_object,
     };
 
     fn test_eval(input: &str) -> Rc<Object> {
@@ -549,14 +549,6 @@ mod tests {
         let mut program = parser.parse_program();
         let mut evaluator = Evaluator::new(env);
         evaluator.eval(&mut program)
-    }
-
-    fn test_integer_object(object: &Rc<Object>, expected: i64) {
-        if let Object::Integer(ref integer) = **object {
-            assert_eq!(integer.value, expected);
-        } else {
-            panic!("not a integer");
-        }
     }
 
     fn test_string_object(object: &Rc<Object>, expected: String) {

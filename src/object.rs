@@ -7,7 +7,7 @@ use crate::{
     enviroment::Enviroment,
 };
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub enum ObjectKind {
     Integer,
     Str,
@@ -40,7 +40,7 @@ impl Display for ObjectKind {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Integer(Integer),
     Str(Str),
@@ -101,7 +101,7 @@ pub trait HashKeyable {
     fn hash_key(&self) -> HashKey;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Integer {
     pub value: i64,
 }
@@ -128,7 +128,7 @@ impl HashKeyable for Integer {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Str {
     pub value: String,
 }
@@ -161,7 +161,7 @@ impl HashKeyable for Str {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Boolean {
     pub value: bool,
 }
@@ -192,7 +192,7 @@ impl HashKeyable for Boolean {
     }
 }
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Clone)]
 pub struct Null {}
 
 impl Inspector for Null {
@@ -205,7 +205,7 @@ impl Inspector for Null {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ReturnValue {
     pub value: Rc<Object>,
 }
@@ -226,7 +226,7 @@ impl Inspector for ReturnValue {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct RuntimeError {
     pub message: String,
 }
@@ -247,7 +247,7 @@ impl Inspector for RuntimeError {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Function {
     pub parameters: Vec<Identifier>,
     pub body: BlockStatement,
@@ -286,7 +286,7 @@ impl Inspector for Function {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Macro {
     pub parameters: Vec<Identifier>,
     pub body: BlockStatement,
@@ -325,7 +325,7 @@ impl Inspector for Macro {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct BuiltinFunction {
     pub name: String,
 }
@@ -346,7 +346,7 @@ impl Inspector for BuiltinFunction {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Array {
     pub elements: Vec<Rc<Object>>,
 }
@@ -374,7 +374,7 @@ impl Inspector for Array {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Hash {
     pub value: HashMap<HashKey, Rc<Object>>,
 }
@@ -402,7 +402,7 @@ impl Inspector for Hash {
     }
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub struct HashKey {
     pub kind: ObjectKind,
     pub name: String,
@@ -415,7 +415,7 @@ impl HashKey {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Quote {
     pub node: Expression,
 }

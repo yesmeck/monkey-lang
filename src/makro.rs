@@ -218,7 +218,7 @@ mod tests {
     use super::*;
 
     fn test_parse_program(input: &str) -> Program {
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         parser.parse_program()
     }

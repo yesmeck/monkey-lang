@@ -1,11 +1,10 @@
-use std::{env::args, fs, process, cell::RefCell, rc::Rc};
+use std::{env::args, fs, process, cell::RefCell, rc::Rc, path::PathBuf};
 
+use clap::{Parser, ValueEnum};
 use enviroment::Enviroment;
 use evaluator::Evaluator;
 use lexer::Lexer;
-use parser::Parser;
-
-use crate::repl::Repl;
+use crate::{repl::Repl, compiler::Compiler, vm::Vm};
 
 mod ast;
 mod builtin;
@@ -18,42 +17,72 @@ mod repl;
 mod token;
 mod traverser;
 mod makro;
+mod code;
+mod compiler;
+mod vm;
+mod test_helper;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum Engine {
+    Vm,
+    Eval
+}
+
+#[derive(Parser)]
+#[command(author, version, about, long_about= None)]
+struct Cli {
+    file: Option<PathBuf>,
+
+    #[arg(short, long, value_name="ENGINE", value_enum, default_value_t=Engine::Vm)]
+    engine: Engine,
+}
 
 fn main() {
-    let mut args = args();
+    let cli = Cli::parse_from(args());
 
-    println!("{:?}", args);
-
-    if args.len() == 2 {
-        run(&args.nth(1).unwrap())
+    if let Some(filename) = cli.file {
+        run(&filename, &cli.engine);
     } else {
-        repl()
+        repl(&cli.engine);
     }
 }
 
-fn run(file: &str) {
+fn run(file: &PathBuf, engine: &Engine) {
     let script = fs::read_to_string(file).expect("Unable to read file");
     let env = Rc::new(RefCell::new(Enviroment::default()));
     let mut evaluator = Evaluator::new(env);
-    let mut lexer = Lexer::new(script);
-    let mut parser = Parser::new(&mut lexer);
+    let mut lexer = Lexer::new(&script);
+    let mut parser = parser::Parser::new(&mut lexer);
     let mut program = parser.parse_program();
-    if !parser.errors.is_empty() {
+   if !parser.errors.is_empty() {
         for error in parser.errors.iter() {
             println!("\t{}", error);
         }
         process::exit(1);
     }
-    let evaluated = evaluator.eval(&mut program);
-    println!("{}", evaluated.inspect());
+    match engine {
+        Engine::Vm => {
+            let mut compiler = Compiler::default();
+            compiler.compile(&program);
+            let mut vm = Vm::new(compiler.bytecode());
+            vm.run();
+            let result = vm.stack_top();
+            println!("{}", result.unwrap().inspect());
+        },
+        Engine::Eval => {
+            let result = evaluator.eval(&mut program);
+            println!("{}", result.inspect());
+        },
+    };
+ 
 }
 
-fn repl() {
+fn repl(engine: &Engine) {
     println!(
         "Hello {}! This is the Monkey programming language!",
         whoami::username()
     );
     println!("Feel free to type in commands");
-    let repl = Repl::new();
+    let repl = Repl::new(engine);
     repl.start();
 }

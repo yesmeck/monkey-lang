@@ -9,9 +9,9 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(input: String) -> Self {
+    pub fn new(input: &str) -> Self {
         let mut l = Self {
-            input,
+            input: input.to_string(),
             position: 0,
             read_position: 0,
             ch: None,

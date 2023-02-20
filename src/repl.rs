@@ -1,6 +1,10 @@
-use std::{io::{self, BufRead, Write}, rc::Rc, cell::RefCell};
+use std::{
+    cell::RefCell,
+    io::{self, BufRead, Write},
+    rc::Rc,
+};
 
-use crate::{evaluator::Evaluator, lexer::Lexer, parser::Parser, enviroment::Enviroment};
+use crate::{enviroment::Enviroment, evaluator::Evaluator, lexer::Lexer, parser::Parser, Engine, compiler::Compiler, vm::Vm};
 
 const MONKEY_FACE: &str = r#"            __,__
    .--.  .-"     "-.  .--.
@@ -15,11 +19,13 @@ const MONKEY_FACE: &str = r#"            __,__
            '-----'
 "#;
 
-pub struct Repl {}
+pub struct Repl<'a> {
+    engine: &'a Engine,
+}
 
-impl Repl {
-    pub fn new() -> Self {
-        Self {}
+impl<'a> Repl<'a> {
+    pub fn new(engine: &'a Engine) -> Self {
+        Self { engine }
     }
 
     fn prompt(&self) {
@@ -39,10 +45,9 @@ impl Repl {
     pub fn start(&self) {
         self.prompt();
         let env = Rc::new(RefCell::new(Enviroment::default()));
-        let mut evaluator = Evaluator::new(env);
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
-            let mut lexer = Lexer::new(line.unwrap());
+            let mut lexer = Lexer::new(&line.unwrap());
             let mut parser = Parser::new(&mut lexer);
             let mut program = parser.parse_program();
 
@@ -52,8 +57,21 @@ impl Repl {
                 continue;
             }
 
-            let evaluated = evaluator.eval(&mut program);
-            println!("{}", evaluated.inspect());
+            match self.engine {
+                Engine::Vm => {
+                    let mut compiler = Compiler::default();
+                    compiler.compile(&program);
+                    let mut vm = Vm::new(compiler.bytecode());
+                    vm.run();
+                    let result = vm.stack_top();
+                    println!("{}", result.unwrap().inspect());
+                }
+                Engine::Eval => {
+                    let mut evaluator = Evaluator::new(Rc::clone(&env));
+                    let result = evaluator.eval(&mut program);
+                    println!("{}", result.inspect());
+                }
+            };
 
             self.prompt();
         }
