@@ -66,8 +66,8 @@ fn run(file: &PathBuf, engine: &Engine) {
             compiler.compile(&program);
             let mut vm = Vm::new(compiler.bytecode());
             vm.run();
-            let result = vm.stack_top();
-            println!("{}", result.unwrap().inspect());
+            let result = vm.last_popped_stack_elem();
+            println!("{}", result.inspect());
         },
         Engine::Eval => {
             let result = evaluator.eval(&mut program);

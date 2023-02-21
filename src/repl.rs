@@ -63,8 +63,8 @@ impl<'a> Repl<'a> {
                     compiler.compile(&program);
                     let mut vm = Vm::new(compiler.bytecode());
                     vm.run();
-                    let result = vm.stack_top();
-                    println!("{}", result.unwrap().inspect());
+                    let result = vm.last_popped_stack_elem();
+                    println!("{}", result.inspect());
                 }
                 Engine::Eval => {
                     let mut evaluator = Evaluator::new(Rc::clone(&env));

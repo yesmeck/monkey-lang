@@ -539,7 +539,7 @@ mod tests {
         enviroment::Enviroment,
         lexer::Lexer,
         object::{Boolean, HashKey, HashKeyable, Inspector, Integer, Object, Str},
-        parser::Parser, test_helper::test_integer_object,
+        parser::Parser, test_helper::{test_integer_object, test_boolean_object},
     };
 
     fn test_eval(input: &str) -> Rc<Object> {
@@ -556,14 +556,6 @@ mod tests {
             assert_eq!(string.value, expected);
         } else {
             panic!("not a string");
-        }
-    }
-
-    fn test_boolean_object(object: &Rc<Object>, expected: bool) {
-        if let Object::Boolean(ref bool) = **object {
-            assert_eq!(bool.value, expected);
-        } else {
-            panic!("not a boolean");
         }
     }
 
