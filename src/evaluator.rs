@@ -539,7 +539,7 @@ mod tests {
         enviroment::Enviroment,
         lexer::Lexer,
         object::{Boolean, HashKey, HashKeyable, Inspector, Integer, Object, Str},
-        parser::Parser, test_helper::{test_integer_object, test_boolean_object},
+        parser::Parser, test_helper::{test_integer_object, test_boolean_object, test_null_object},
     };
 
     fn test_eval(input: &str) -> Rc<Object> {
@@ -557,10 +557,6 @@ mod tests {
         } else {
             panic!("not a string");
         }
-    }
-
-    fn test_null_object(object: &Rc<Object>) {
-        assert!(matches!(**object, Object::Null(_)))
     }
 
     fn test_error_object(object: &Rc<Object>, expected: String) {

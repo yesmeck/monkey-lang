@@ -3,7 +3,7 @@ use std::rc::Rc;
 use byteorder::{BigEndian, ByteOrder};
 
 use crate::{
-    code::{Instructions, OpCode},
+    code::{Instructions, Opcode},
     compiler::Bytecode,
     object::{Boolean, Integer, Null, Object},
 };
@@ -44,36 +44,51 @@ impl Vm {
     pub fn run(&mut self) {
         let mut ip = 0;
         while ip < self.instructions.len() {
-            let op = OpCode::from(self.instructions.0[ip]);
+            let op = Opcode::from(self.instructions.0[ip]);
             match op {
-                OpCode::OpConstant => {
+                Opcode::OpConstant => {
                     let const_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
                     ip += 2;
                     let constant = self.constants.get(const_index as usize).unwrap().to_owned();
                     self.push(constant.into());
                 }
-                OpCode::OpTrue => self.push(Rc::clone(&self.true_object)),
-                OpCode::OpFalse => self.push(Rc::clone(&self.false_object)),
-                OpCode::OpAdd | OpCode::OpSub | OpCode::OpMul | OpCode::OpDiv => {
+                Opcode::OpTrue => self.push(Rc::clone(&self.true_object)),
+                Opcode::OpFalse => self.push(Rc::clone(&self.false_object)),
+                Opcode::OpAdd | Opcode::OpSub | Opcode::OpMul | Opcode::OpDiv => {
                     self.execute_binary_operation(&op);
                 }
-                OpCode::OpEqual | OpCode::OpNotEqual | OpCode::OpGreaterThan => {
+                Opcode::OpEqual | Opcode::OpNotEqual | Opcode::OpGreaterThan => {
                     self.execute_comparison(&op);
                 }
-                OpCode::OpMinus => self.execute_minus_operator(),
-                OpCode::OpBang => self.execute_bang_operator(),
-                OpCode::OpPop => {
+                Opcode::OpMinus => self.execute_minus_operator(),
+                Opcode::OpBang => self.execute_bang_operator(),
+                Opcode::OpPop => {
                     self.pop();
                 }
-                OpCode::NoOp => {}
+                Opcode::OpJumpNotTruth => {
+                    let pos = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
+                    ip += 2;
+
+                    let confition = self.pop();
+
+                    if !self.is_truthy(&confition) {
+                        ip = pos as usize - 1;
+                    }
+                }
+                Opcode::OpJump => {
+                    let pos = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
+                    ip = pos as usize - 1;
+                }
+                Opcode::OpNull => self.push(Rc::clone(&self.null_object)),
+                Opcode::NoOp => {}
             }
             ip += 1;
         }
     }
 
-    fn execute_binary_operation(&mut self, op: &OpCode) {
-        let right = self.pop().to_owned();
-        let left = self.pop().to_owned();
+    fn execute_binary_operation(&mut self, op: &Opcode) {
+        let right = self.pop();
+        let left = self.pop();
         if let Object::Integer(ref right) = *right {
             if let Object::Integer(ref left) = *left {
                 self.execute_binary_integer_operation(op, left, right);
@@ -81,20 +96,20 @@ impl Vm {
         }
     }
 
-    fn execute_binary_integer_operation(&mut self, op: &OpCode, left: &Integer, right: &Integer) {
+    fn execute_binary_integer_operation(&mut self, op: &Opcode, left: &Integer, right: &Integer) {
         let result = match op {
-            OpCode::OpAdd => left.value + right.value,
-            OpCode::OpSub => left.value - right.value,
-            OpCode::OpMul => left.value * right.value,
-            OpCode::OpDiv => left.value / right.value,
+            Opcode::OpAdd => left.value + right.value,
+            Opcode::OpSub => left.value - right.value,
+            Opcode::OpMul => left.value * right.value,
+            Opcode::OpDiv => left.value / right.value,
             _ => panic!("unknown integer operator: {:?}", op),
         };
         self.push(Object::Integer(Integer::new(result)).into());
     }
 
-    fn execute_comparison(&mut self, op: &OpCode) {
-        let right = self.pop().to_owned();
-        let left = self.pop().to_owned();
+    fn execute_comparison(&mut self, op: &Opcode) {
+        let right = self.pop();
+        let left = self.pop();
 
         if let Object::Integer(ref right) = *right {
             if let Object::Integer(ref left) = *left {
@@ -105,8 +120,8 @@ impl Vm {
         }
 
         let result = match op {
-            OpCode::OpEqual => self.native_bool_to_boolean_object(left == right),
-            OpCode::OpNotEqual => self.native_bool_to_boolean_object(left != right),
+            Opcode::OpEqual => self.native_bool_to_boolean_object(left == right),
+            Opcode::OpNotEqual => self.native_bool_to_boolean_object(left != right),
             _ => panic!(
                 "unknown operator: {:?} ({:?} {:?})",
                 op,
@@ -119,23 +134,23 @@ impl Vm {
 
     fn execute_integer_comparison(
         &mut self,
-        op: &OpCode,
+        op: &Opcode,
         left: &Integer,
         right: &Integer,
     ) -> Rc<Object> {
         match op {
-            OpCode::OpEqual => self.native_bool_to_boolean_object(left.value == right.value),
-            OpCode::OpNotEqual => self.native_bool_to_boolean_object(left.value != right.value),
-            OpCode::OpGreaterThan => self.native_bool_to_boolean_object(left.value > right.value),
+            Opcode::OpEqual => self.native_bool_to_boolean_object(left.value == right.value),
+            Opcode::OpNotEqual => self.native_bool_to_boolean_object(left.value != right.value),
+            Opcode::OpGreaterThan => self.native_bool_to_boolean_object(left.value > right.value),
             _ => panic!("unknown operator: {:?}", op),
         }
     }
 
     fn execute_bang_operator(&mut self) {
-        let operand = self.pop().to_owned();
+        let operand = self.pop();
         if operand == self.true_object {
             self.push(Rc::clone(&self.false_object));
-        } else if operand == self.false_object {
+        } else if operand == self.false_object || operand == self.null_object {
             self.push(Rc::clone(&self.true_object));
         } else {
             self.push(Rc::clone(&self.false_object));
@@ -143,12 +158,10 @@ impl Vm {
     }
 
     fn execute_minus_operator(&mut self) {
-        let operand = self.pop().to_owned();
+        let operand = self.pop();
 
         if let Object::Integer(ref integer) = *operand {
-            self.push(
-                Object::Integer(Integer::new(-integer.value)).into()
-            );
+            self.push(Object::Integer(Integer::new(-integer.value)).into());
         } else {
             panic!("unsupported type for negation: {}", operand.kind());
         }
@@ -161,18 +174,30 @@ impl Vm {
         }
     }
 
+    fn is_truthy(&self, object: &Rc<Object>) -> bool {
+        match **object {
+            Object::Boolean(ref o) => o.value.to_owned(),
+            Object::Null(_) => false,
+            _ => true,
+        }
+    }
+
     fn push(&mut self, object: Rc<Object>) {
         self.stack[self.sp] = object;
         self.sp += 1;
     }
 
-    fn pop(&mut self) -> &Rc<Object> {
+    fn pop(&mut self) -> Rc<Object> {
         self.sp -= 1;
-        &self.stack[self.sp]
+        Rc::clone(&self.stack[self.sp])
     }
 
-    pub fn last_popped_stack_elem(&self) -> &Object {
-        &self.stack[self.sp]
+    pub fn last_popped_stack_elem(&self) -> Rc<Object> {
+        if let Some(object) = self.stack.get(self.sp) {
+            Rc::clone(object)
+        } else {
+            Rc::clone(&self.null_object)
+        }
     }
 
     pub fn stack_top(&self) -> &Object {
@@ -185,7 +210,9 @@ mod tests {
     use crate::{
         compiler::Compiler,
         object::Object,
-        test_helper::{parse, test_boolean_object, test_integer_object, ExpectedValue},
+        test_helper::{
+            parse, test_boolean_object, test_integer_object, test_null_object, ExpectedValue,
+        },
     };
 
     use super::Vm;
@@ -202,7 +229,7 @@ mod tests {
             let mut vm = Vm::new(compiler.bytecode());
             vm.run();
 
-            test_expected_object(vm.last_popped_stack_elem(), &test.1)
+            test_expected_object(&vm.last_popped_stack_elem(), &test.1)
         }
     }
 
@@ -210,6 +237,7 @@ mod tests {
         match expected {
             ExpectedValue::Integer(e) => test_integer_object(actual, e.to_owned()),
             ExpectedValue::Boolean(e) => test_boolean_object(actual, e.to_owned()),
+            ExpectedValue::Null => test_null_object(actual),
         }
     }
 
@@ -268,6 +296,25 @@ mod tests {
             VmTestCase("!!true", ExpectedValue::Boolean(true)),
             VmTestCase("!!false", ExpectedValue::Boolean(false)),
             VmTestCase("!!5", ExpectedValue::Boolean(true)),
+            VmTestCase("!(if (false) { 5; })", ExpectedValue::Boolean(true)),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_conditionals() {
+        let tests = [
+            VmTestCase("if (true) { 10 }", ExpectedValue::Integer(10)),
+            VmTestCase("if (true) { 10 } else { 20 }", ExpectedValue::Integer(10)),
+            VmTestCase("if (false) { 10 } else { 20 } ", ExpectedValue::Integer(20)),
+            VmTestCase("if (1) { 10 }", ExpectedValue::Integer(10)),
+            VmTestCase("if (1 < 2) { 10 }", ExpectedValue::Integer(10)),
+            VmTestCase("if (1 < 2) { 10 } else { 20 }", ExpectedValue::Integer(10)),
+            VmTestCase("if (1 > 2) { 10 } else { 20 }", ExpectedValue::Integer(20)),
+            VmTestCase("if (1 > 2) { 10 }", ExpectedValue::Null),
+            VmTestCase("if (false) { 10 }", ExpectedValue::Null),
+            VmTestCase("if ((if (false) { 10 })) { 10 } else { 20 }", ExpectedValue::Integer(20)),
         ];
 
         run_vm_tests(&tests);

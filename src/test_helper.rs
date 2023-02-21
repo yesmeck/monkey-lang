@@ -4,6 +4,7 @@ use crate::{ast::Program, lexer::Lexer, object::Object, parser::Parser};
 pub enum ExpectedValue {
     Integer(i64),
     Boolean(bool),
+    Null,
 }
 
 pub fn parse(input: &str) -> Program {
@@ -26,4 +27,8 @@ pub fn test_boolean_object(object: &Object, expected: bool) {
     } else {
         panic!("not a boolean");
     }
+}
+
+pub fn test_null_object(object: &Object) {
+    assert!(matches!(*object, Object::Null(_)))
 }
