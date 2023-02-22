@@ -2,12 +2,13 @@ use std::ops::Range;
 
 use crate::{
     ast::{
-        BlockStatement, BooleanExpression, Expression, ExpressionStatement, IfExpression,
-        InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
-        Statement,
+        ArrayLiteral, BlockStatement, BooleanExpression, Expression, ExpressionStatement,
+        IfExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program,
+        ReturnStatement, Statement, StringLiteral,
     },
-    code::{make, Instructions, Opcode},
-    object::{Integer, Object}, symbol_table::SymbolTable,
+    code::{Instructions, Opcode},
+    object::{Integer, Object, Str},
+    symbol_table::SymbolTable,
 };
 
 #[derive(Debug)]
@@ -69,32 +70,30 @@ impl Compiler {
 
     fn compile_let_statement(&mut self, node: &LetStatement) {
         self.compile_expression(&node.value);
-        let symbol = self.symbol_table.define(
-            node.name.value.as_str()
-        );
+        let symbol = self.symbol_table.define(node.name.value.as_str());
         let symbol_index = symbol.index;
-        self.emit(Opcode::OpSetGlobal, vec![symbol_index]);
+        self.emit(Opcode::SetGlobal, vec![symbol_index]);
     }
 
     fn compile_return_statement(&mut self, node: &ReturnStatement) {}
 
     fn compile_expression_statement(&mut self, node: &ExpressionStatement) {
         self.compile_expression(&node.expression);
-        self.emit(Opcode::OpPop, vec![]);
+        self.emit(Opcode::Pop, vec![]);
     }
 
     fn compile_expression(&mut self, node: &Expression) {
         match node {
             Expression::IntegerLiteral(node) => self.compile_integer_literal(node),
-            Expression::StringLiteral(_) => todo!(),
+            Expression::StringLiteral(node) => self.compile_string_literal(node),
             Expression::NullLiteral(_) => todo!(),
-            Expression::ArrayLiteral(_) => todo!(),
+            Expression::ArrayLiteral(node) => self.compile_array_literal(node),
             Expression::HashLiteral(_) => todo!(),
             Expression::FunctionLiteral(_) => todo!(),
             Expression::Boolean(node) => self.compiler_boolean_expression(node),
             Expression::Identifier(node) => {
                 match self.symbol_table.resolve(&node.value) {
-                    Some(symbol) => self.emit(Opcode::OpGetGlobal, vec![symbol.index]),
+                    Some(symbol) => self.emit(Opcode::GetGlobal, vec![symbol.index]),
                     None => panic!("undefined variable {}", node.value),
                 };
             }
@@ -117,13 +116,13 @@ impl Compiler {
         }
 
         match node.operator.as_str() {
-            "+" => self.emit(Opcode::OpAdd, vec![]),
-            "-" => self.emit(Opcode::OpSub, vec![]),
-            "*" => self.emit(Opcode::OpMul, vec![]),
-            "/" => self.emit(Opcode::OpDiv, vec![]),
-            ">" | "<" => self.emit(Opcode::OpGreaterThan, vec![]),
-            "==" => self.emit(Opcode::OpEqual, vec![]),
-            "!=" => self.emit(Opcode::OpNotEqual, vec![]),
+            "+" => self.emit(Opcode::Add, vec![]),
+            "-" => self.emit(Opcode::Sub, vec![]),
+            "*" => self.emit(Opcode::Mul, vec![]),
+            "/" => self.emit(Opcode::Div, vec![]),
+            ">" | "<" => self.emit(Opcode::GreaterThan, vec![]),
+            "==" => self.emit(Opcode::Equal, vec![]),
+            "!=" => self.emit(Opcode::NotEqual, vec![]),
             _ => panic!("unknown operator {}", node.operator),
         };
     }
@@ -131,8 +130,8 @@ impl Compiler {
     fn compile_prefix_expression(&mut self, node: &PrefixExpression) {
         self.compile_expression(&node.right);
         match node.operator.as_str() {
-            "-" => self.emit(Opcode::OpMinus, vec![]),
-            "!" => self.emit(Opcode::OpBang, vec![]),
+            "-" => self.emit(Opcode::Minus, vec![]),
+            "!" => self.emit(Opcode::Bang, vec![]),
             _ => panic!("unknown operator {}", node.operator),
         };
     }
@@ -140,7 +139,7 @@ impl Compiler {
     fn compile_if_expression(&mut self, node: &IfExpression) {
         self.compile_expression(&node.condition);
 
-        let jump_not_truth_pos = self.emit(Opcode::OpJumpNotTruth, vec![9999]);
+        let jump_not_truth_pos = self.emit(Opcode::JumpNotTruth, vec![9999]);
 
         self.compile_block_statsment(&node.consequence);
 
@@ -148,7 +147,7 @@ impl Compiler {
             self.remove_last_pop();
         }
 
-        let jump_pos = self.emit(Opcode::OpJump, vec![9999]);
+        let jump_pos = self.emit(Opcode::Jump, vec![9999]);
 
         let after_consequence_pos = self.instructions.len();
         self.change_operand(jump_not_truth_pos, after_consequence_pos as u16);
@@ -160,7 +159,7 @@ impl Compiler {
                 self.remove_last_pop();
             }
         } else {
-            self.emit(Opcode::OpNull, vec![]);
+            self.emit(Opcode::Null, vec![]);
         }
 
         let afte_alternative_pos = self.instructions.len();
@@ -170,13 +169,26 @@ impl Compiler {
     fn compile_integer_literal(&mut self, node: &IntegerLiteral) {
         let integer = Object::Integer(Integer::new(node.value.to_owned()));
         let const_pos = self.add_constant(integer);
-        self.emit(Opcode::OpConstant, vec![const_pos]);
+        self.emit(Opcode::Constant, vec![const_pos]);
+    }
+
+    fn compile_string_literal(&mut self, node: &StringLiteral) {
+        let string = Object::Str(Str::new(node.value.to_owned()));
+        let const_pos = self.add_constant(string);
+        self.emit(Opcode::Constant, vec![const_pos]);
+    }
+
+    fn compile_array_literal(&mut self, node: &ArrayLiteral) {
+        for el in node.elements.iter() {
+            self.compile_expression(el);
+        }
+        self.emit(Opcode::Array, vec![node.elements.len() as u16]);
     }
 
     fn compiler_boolean_expression(&mut self, node: &BooleanExpression) {
         match node.value {
-            true => self.emit(Opcode::OpTrue, vec![]),
-            false => self.emit(Opcode::OpFalse, vec![]),
+            true => self.emit(Opcode::True, vec![]),
+            false => self.emit(Opcode::False, vec![]),
         };
     }
 
@@ -192,7 +204,7 @@ impl Compiler {
     }
 
     fn emit(&mut self, op: Opcode, operands: Vec<u16>) -> usize {
-        let mut ins = make(op.to_owned(), operands);
+        let mut ins = op.make(operands);
         let pos = self.add_instructions(&mut ins);
         self.set_last_instruction(op, pos);
         pos
@@ -205,7 +217,7 @@ impl Compiler {
 
     fn last_instruction_is_pop(&mut self) -> bool {
         if let Some(ref last_instruction) = self.last_instruction {
-            last_instruction.opcode == Opcode::OpPop
+            last_instruction.opcode == Opcode::Pop
         } else {
             false
         }
@@ -229,7 +241,7 @@ impl Compiler {
 
     fn change_operand(&mut self, pos: usize, operand: u16) {
         let op = Opcode::from(self.instructions.0[pos]);
-        let new_instruction = make(op, vec![operand]);
+        let new_instruction = op.make(vec![operand]);
         self.replace_instruction(pos, new_instruction);
     }
 
@@ -245,16 +257,17 @@ impl Compiler {
 mod tests {
 
     use crate::{
-        code::{make, Instructions, Opcode},
+        code::{Instructions, Opcode},
         test_helper::{
-            parse, test_boolean_object, test_integer_object, test_null_object, ExpectedValue,
+            parse, test_boolean_object, test_integer_object, test_null_object, test_string_object,
+            ExpectedValue, test_array_object,
         },
     };
 
     use super::*;
 
     #[derive(Debug)]
-    struct CompilerTestCase<'a>(&'a str, Vec<ExpectedValue>, Vec<Instructions>);
+    struct CompilerTestCase<'a>(&'a str, Vec<ExpectedValue<'a>>, Vec<Instructions>);
 
     fn run_compiler_tests(tests: &[CompilerTestCase]) {
         for test in tests.iter() {
@@ -273,6 +286,8 @@ mod tests {
             match constant {
                 ExpectedValue::Integer(e) => test_integer_object(&actual[i], *e),
                 ExpectedValue::Boolean(e) => test_boolean_object(&actual[i], *e),
+                ExpectedValue::String(e) => test_string_object(&actual[i], e),
+                ExpectedValue::Array(e) => test_array_object(&actual[i], e),
                 ExpectedValue::Null => test_null_object(&actual[i]),
             }
         }
@@ -294,59 +309,59 @@ mod tests {
                 "1 + 2",
                 vec![ExpectedValue::Integer(1), ExpectedValue::Integer(2)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpAdd, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Add.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "1; 2",
                 vec![ExpectedValue::Integer(1), ExpectedValue::Integer(2)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpPop, vec![]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Pop.make(vec![]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "1 - 2",
                 vec![ExpectedValue::Integer(1), ExpectedValue::Integer(2)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpSub, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Sub.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "1 * 2",
                 vec![ExpectedValue::Integer(1), ExpectedValue::Integer(2)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpMul, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Mul.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "2 / 1",
                 vec![ExpectedValue::Integer(2), ExpectedValue::Integer(1)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpDiv, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Div.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "-1",
                 vec![ExpectedValue::Integer(1)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpMinus, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Minus.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
         ];
@@ -360,80 +375,80 @@ mod tests {
             CompilerTestCase(
                 "true",
                 vec![],
-                vec![make(Opcode::OpTrue, vec![]), make(Opcode::OpPop, vec![])],
+                vec![Opcode::True.make(vec![]), Opcode::Pop.make(vec![])],
             ),
             CompilerTestCase(
                 "false",
                 vec![],
-                vec![make(Opcode::OpFalse, vec![]), make(Opcode::OpPop, vec![])],
+                vec![Opcode::False.make(vec![]), Opcode::Pop.make(vec![])],
             ),
             CompilerTestCase(
                 "1 > 2",
                 vec![ExpectedValue::Integer(1), ExpectedValue::Integer(2)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpGreaterThan, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::GreaterThan.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "1 < 2",
                 vec![ExpectedValue::Integer(2), ExpectedValue::Integer(1)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpGreaterThan, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::GreaterThan.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "1 == 2",
                 vec![ExpectedValue::Integer(1), ExpectedValue::Integer(2)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpEqual, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Equal.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "1 != 2",
                 vec![ExpectedValue::Integer(1), ExpectedValue::Integer(2)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpNotEqual, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::NotEqual.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "true == false",
                 vec![],
                 vec![
-                    make(Opcode::OpTrue, vec![]),
-                    make(Opcode::OpFalse, vec![]),
-                    make(Opcode::OpEqual, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::True.make(vec![]),
+                    Opcode::False.make(vec![]),
+                    Opcode::Equal.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "true != false",
                 vec![],
                 vec![
-                    make(Opcode::OpTrue, vec![]),
-                    make(Opcode::OpFalse, vec![]),
-                    make(Opcode::OpNotEqual, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::True.make(vec![]),
+                    Opcode::False.make(vec![]),
+                    Opcode::NotEqual.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
                 "!true",
                 vec![],
                 vec![
-                    make(Opcode::OpTrue, vec![]),
-                    make(Opcode::OpBang, vec![]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::True.make(vec![]),
+                    Opcode::Bang.make(vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
         ];
@@ -449,21 +464,21 @@ mod tests {
                 vec![ExpectedValue::Integer(10), ExpectedValue::Integer(3333)],
                 vec![
                     // 0000
-                    make(Opcode::OpTrue, vec![]),
+                    Opcode::True.make(vec![]),
                     // 0001
-                    make(Opcode::OpJumpNotTruth, vec![10]),
+                    Opcode::JumpNotTruth.make(vec![10]),
                     // 0004
-                    make(Opcode::OpConstant, vec![0]),
+                    Opcode::Constant.make(vec![0]),
                     // 0007
-                    make(Opcode::OpJump, vec![11]),
+                    Opcode::Jump.make(vec![11]),
                     // 0010
-                    make(Opcode::OpNull, vec![]),
+                    Opcode::Null.make(vec![]),
                     // 0011
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Pop.make(vec![]),
                     // 0012
-                    make(Opcode::OpConstant, vec![1]),
+                    Opcode::Constant.make(vec![1]),
                     // 0015
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
@@ -475,21 +490,21 @@ mod tests {
                 ],
                 vec![
                     // 0000
-                    make(Opcode::OpTrue, vec![]),
+                    Opcode::True.make(vec![]),
                     // 0001
-                    make(Opcode::OpJumpNotTruth, vec![10]),
+                    Opcode::JumpNotTruth.make(vec![10]),
                     // 0004
-                    make(Opcode::OpConstant, vec![0]),
+                    Opcode::Constant.make(vec![0]),
                     // 0007
-                    make(Opcode::OpJump, vec![13]),
+                    Opcode::Jump.make(vec![13]),
                     // 00010
-                    make(Opcode::OpConstant, vec![1]),
+                    Opcode::Constant.make(vec![1]),
                     // 00013
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Pop.make(vec![]),
                     // 00014
-                    make(Opcode::OpConstant, vec![2]),
+                    Opcode::Constant.make(vec![2]),
                     // 00017
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
         ];
@@ -505,10 +520,10 @@ mod tests {
                 let two = 2;",
                 vec![ExpectedValue::Integer(1), ExpectedValue::Integer(2)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpSetGlobal, vec![0]),
-                    make(Opcode::OpConstant, vec![1]),
-                    make(Opcode::OpSetGlobal, vec![1]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::SetGlobal.make(vec![1]),
                 ],
             ),
             CompilerTestCase(
@@ -516,10 +531,10 @@ mod tests {
                 one;",
                 vec![ExpectedValue::Integer(1)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpSetGlobal, vec![0]),
-                    make(Opcode::OpGetGlobal, vec![0]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::GetGlobal.make(vec![0]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
             CompilerTestCase(
@@ -528,12 +543,87 @@ mod tests {
                 two;",
                 vec![ExpectedValue::Integer(1)],
                 vec![
-                    make(Opcode::OpConstant, vec![0]),
-                    make(Opcode::OpSetGlobal, vec![0]),
-                    make(Opcode::OpGetGlobal, vec![0]),
-                    make(Opcode::OpSetGlobal, vec![1]),
-                    make(Opcode::OpGetGlobal, vec![1]),
-                    make(Opcode::OpPop, vec![]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::GetGlobal.make(vec![0]),
+                    Opcode::SetGlobal.make(vec![1]),
+                    Opcode::GetGlobal.make(vec![1]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+        ];
+
+        run_compiler_tests(&tests);
+    }
+
+    #[test]
+    fn test_string_expressions() {
+        let tests = [
+            CompilerTestCase(
+                r#""monkey""#,
+                vec![ExpectedValue::String("monkey")],
+                vec![Opcode::Constant.make(vec![0]), Opcode::Pop.make(vec![])],
+            ),
+            CompilerTestCase(
+                r#""mon" + "key""#,
+                vec![ExpectedValue::String("mon"), ExpectedValue::String("key")],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Add.make(vec![]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+        ];
+
+        run_compiler_tests(&tests);
+    }
+
+    #[test]
+    fn test_array_literals() {
+        let tests = [
+            CompilerTestCase(
+                "[]",
+                vec![],
+                vec![Opcode::Array.make(vec![0]), Opcode::Pop.make(vec![])],
+            ),
+            CompilerTestCase(
+                "[1, 2, 3]",
+                vec![
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Integer(2),
+                    ExpectedValue::Integer(3),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Constant.make(vec![2]),
+                    Opcode::Array.make(vec![3]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+            CompilerTestCase(
+                "[1 + 2, 3 - 4, 5 * 6]",
+                vec![
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Integer(2),
+                    ExpectedValue::Integer(3),
+                    ExpectedValue::Integer(4),
+                    ExpectedValue::Integer(5),
+                    ExpectedValue::Integer(6),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Add.make(vec![]),
+                    Opcode::Constant.make(vec![2]),
+                    Opcode::Constant.make(vec![3]),
+                    Opcode::Sub.make(vec![]),
+                    Opcode::Constant.make(vec![4]),
+                    Opcode::Constant.make(vec![5]),
+                    Opcode::Mul.make(vec![]),
+                    Opcode::Array.make(vec![3]),
+                    Opcode::Pop.make(vec![]),
                 ],
             ),
         ];

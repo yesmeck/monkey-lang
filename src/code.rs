@@ -5,50 +5,78 @@ use lazy_static::lazy_static;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Opcode {
-    OpConstant = 0,
-    OpAdd = 1,
-    OpPop = 2,
-    OpSub = 3,
-    OpMul = 4,
-    OpDiv = 5,
-    OpTrue = 6,
-    OpFalse = 7,
-    OpEqual = 8,
-    OpNotEqual = 9,
-    OpGreaterThan = 10,
-    OpMinus = 11,
-    OpBang = 12,
-    OpJumpNotTruth = 13,
-    OpJump = 14,
-    OpNull = 15,
-    OpGetGlobal = 16,
-    OpSetGlobal = 17,
-    NoOp,
+    Constant = 0,
+    Add = 1,
+    Pop = 2,
+    Sub = 3,
+    Mul = 4,
+    Div = 5,
+    True = 6,
+    False = 7,
+    Equal = 8,
+    NotEqual = 9,
+    GreaterThan = 10,
+    Minus = 11,
+    Bang = 12,
+    JumpNotTruth = 13,
+    Jump = 14,
+    Null = 15,
+    GetGlobal = 16,
+    SetGlobal = 17,
+    Array = 18,
 }
 
 impl Opcode {
     pub fn from(code: u8) -> Self {
         match code {
-            0 => Self::OpConstant,
-            1 => Self::OpAdd,
-            2 => Self::OpPop,
-            3 => Self::OpSub,
-            4 => Self::OpMul,
-            5 => Self::OpDiv,
-            6 => Self::OpTrue,
-            7 => Self::OpFalse,
-            8 => Self::OpEqual,
-            9 => Self::OpNotEqual,
-            10 => Self::OpGreaterThan,
-            11 => Self::OpMinus,
-            12 => Self::OpBang,
-            13 => Self::OpJumpNotTruth,
-            14 => Self::OpJump,
-            15 => Self::OpNull,
-            16 => Self::OpGetGlobal,
-            17 => Self::OpSetGlobal,
+            0 => Self::Constant,
+            1 => Self::Add,
+            2 => Self::Pop,
+            3 => Self::Sub,
+            4 => Self::Mul,
+            5 => Self::Div,
+            6 => Self::True,
+            7 => Self::False,
+            8 => Self::Equal,
+            9 => Self::NotEqual,
+            10 => Self::GreaterThan,
+            11 => Self::Minus,
+            12 => Self::Bang,
+            13 => Self::JumpNotTruth,
+            14 => Self::Jump,
+            15 => Self::Null,
+            16 => Self::GetGlobal,
+            17 => Self::SetGlobal,
+            18 => Self::Array,
             _ => unreachable!(),
         }
+    }
+
+    pub fn make(&self, operands: Vec<u16>) -> Instructions {
+        if let Some(def) = DEFINITIONS.get(self) {
+            let mut instruction_len = 1;
+            for w in def.1.iter() {
+                instruction_len += w;
+            }
+
+            let mut instruction = Instructions(vec![]);
+            instruction.0.push(self.to_owned() as u8);
+
+            for (i, operand) in operands.iter().enumerate() {
+                let width = def.1[i];
+                if let 2 = width {
+                    instruction.0.write_u16::<BigEndian>(*operand).unwrap()
+                }
+            }
+
+            instruction
+        } else {
+            Instructions::default()
+        }
+    }
+
+    pub fn definition(&self) -> &Definition {
+        DEFINITIONS.get(self).unwrap()
     }
 }
 
@@ -58,27 +86,25 @@ pub struct Definition(&'static str, Vec<u64>);
 lazy_static! {
     static ref DEFINITIONS: HashMap<Opcode, Definition> = {
         HashMap::from([
-            (Opcode::OpConstant, Definition("OpConstant", vec![2])),
-            (Opcode::OpAdd, Definition("OpAdd", vec![])),
-            (Opcode::OpSub, Definition("OpSub", vec![])),
-            (Opcode::OpMul, Definition("OpMul", vec![])),
-            (Opcode::OpDiv, Definition("OpDiv", vec![])),
-            (Opcode::OpPop, Definition("OpPop", vec![])),
-            (Opcode::OpTrue, Definition("OpTrue", vec![])),
-            (Opcode::OpFalse, Definition("OpFalse", vec![])),
-            (Opcode::OpEqual, Definition("OpEqual", vec![])),
-            (Opcode::OpNotEqual, Definition("OpNotEqual", vec![])),
-            (Opcode::OpGreaterThan, Definition("OpGreaterThan", vec![])),
-            (Opcode::OpMinus, Definition("OpMinus", vec![])),
-            (Opcode::OpBang, Definition("OpBang", vec![])),
-            (
-                Opcode::OpJumpNotTruth,
-                Definition("OpJumpNotTruth", vec![2]),
-            ),
-            (Opcode::OpJump, Definition("OpJump", vec![2])),
-            (Opcode::OpNull, Definition("OpNull", vec![])),
-            (Opcode::OpGetGlobal, Definition("OpGetGlobal", vec![2])),
-            (Opcode::OpSetGlobal, Definition("OpSetGlobal", vec![2])),
+            (Opcode::Constant, Definition("OpConstant", vec![2])),
+            (Opcode::Add, Definition("OpAdd", vec![])),
+            (Opcode::Sub, Definition("OpSub", vec![])),
+            (Opcode::Mul, Definition("OpMul", vec![])),
+            (Opcode::Div, Definition("OpDiv", vec![])),
+            (Opcode::Pop, Definition("OpPop", vec![])),
+            (Opcode::True, Definition("OpTrue", vec![])),
+            (Opcode::False, Definition("OpFalse", vec![])),
+            (Opcode::Equal, Definition("OpEqual", vec![])),
+            (Opcode::NotEqual, Definition("OpNotEqual", vec![])),
+            (Opcode::GreaterThan, Definition("OpGreaterThan", vec![])),
+            (Opcode::Minus, Definition("OpMinus", vec![])),
+            (Opcode::Bang, Definition("OpBang", vec![])),
+            (Opcode::JumpNotTruth, Definition("OpJumpNotTruth", vec![2])),
+            (Opcode::Jump, Definition("OpJump", vec![2])),
+            (Opcode::Null, Definition("OpNull", vec![])),
+            (Opcode::GetGlobal, Definition("OpGetGlobal", vec![2])),
+            (Opcode::SetGlobal, Definition("OpSetGlobal", vec![2])),
+            (Opcode::Array, Definition("OpArray", vec![2])),
         ])
     };
 }
@@ -99,6 +125,20 @@ impl Instructions {
         self.0.len()
     }
 
+    pub fn read_operands(&self, def: &Definition) -> (Vec<u16>, usize) {
+        let mut operands = vec![0; def.1.len()];
+
+        let mut offset = 0;
+        for (i, width) in def.1.iter().enumerate() {
+            if let 2 = width {
+                operands[i] = BigEndian::read_u16(&self.0[offset + 1..])
+            }
+            offset += width.to_owned() as usize;
+        }
+
+        (operands, offset)
+    }
+
     fn fmt_instruction(&self, def: &Definition, operands: &Vec<u16>) -> String {
         let operand_count = def.1.len();
         if operands.len() != operand_count {
@@ -109,7 +149,7 @@ impl Instructions {
             )
         } else {
             match operand_count {
-                0 => format!("{}", def.0),
+                0 => def.0.to_owned(),
                 1 => format!("{} {}", def.0, operands[0]),
                 _ => format!("ERROR: unhandled operandCount for {}", def.0),
             }
@@ -122,66 +162,22 @@ impl Display for Instructions {
         let mut out = String::new();
         let mut i = 0;
         while i < self.0.len() {
-            if let Some(def) = lookup(&Opcode::from(self.0[i])) {
-                let (operands, read) = read_operands(
-                    def,
-                    &self.take_range(Range {
-                        start: i,
-                        end: self.0.len(),
-                    }),
-                );
-                out.push_str(&format!(
-                    "{:04} {}\n",
-                    i,
-                    self.fmt_instruction(def, &operands)
-                ));
-                i += 1 + read;
-            }
+            let op = Opcode::from(self.0[i]);
+            let def = op.definition();
+            let (operands, read) = &self
+                .take_range(Range {
+                    start: i,
+                    end: self.0.len(),
+                })
+                .read_operands(def);
+            out.push_str(&format!(
+                "{:04} {}\n",
+                i,
+                self.fmt_instruction(def, operands)
+            ));
+            i += 1 + read;
         }
         write!(f, "{}", out)
-    }
-}
-
-fn lookup(op: &Opcode) -> Option<&Definition> {
-    DEFINITIONS.get(op)
-}
-
-pub fn read_operands(def: &Definition, ins: &Instructions) -> (Vec<u16>, usize) {
-    let mut operands = vec![0; def.1.len()];
-
-    let mut offset = 0;
-    for (i, width) in def.1.iter().enumerate() {
-        match width {
-            2 => operands[i] = BigEndian::read_u16(&ins.0[offset + 1..]), // first byte is op
-            _ => {}
-        }
-        offset += width.to_owned() as usize;
-    }
-
-    (operands, offset)
-}
-
-pub fn make(op: Opcode, operands: Vec<u16>) -> Instructions {
-    if let Some(def) = DEFINITIONS.get(&op) {
-        let mut instruction_len = 1;
-        for w in def.1.iter() {
-            instruction_len += w;
-        }
-
-        let mut instruction = Instructions(vec![]);
-        instruction.0.push(op.to_owned() as u8);
-
-        for (i, operand) in operands.iter().enumerate() {
-            let width = def.1[i];
-            match width {
-                2 => instruction.0.write_u16::<BigEndian>(*operand).unwrap(),
-                _ => {}
-            }
-        }
-
-        instruction
-    } else {
-        Instructions::default()
     }
 }
 
@@ -192,9 +188,9 @@ mod tests {
     #[test]
     fn test_instructions_string() {
         let instructions = [
-            make(Opcode::OpAdd, vec![]),
-            make(Opcode::OpConstant, vec![2]),
-            make(Opcode::OpConstant, vec![65535]),
+            Opcode::Add.make(vec![]),
+            Opcode::Constant.make(vec![2]),
+            Opcode::Constant.make(vec![65535]),
         ];
         let expected = "0000 OpAdd
 0001 OpConstant 2
@@ -208,38 +204,31 @@ mod tests {
     fn test_make() {
         let tests = [
             (
-                Opcode::OpConstant,                                       // op
-                vec![65534 as u16],                                       // operands
-                Instructions(vec![Opcode::OpConstant as u8, 0xFF, 0xFE]), // expected
+                Opcode::Constant,                                       // op
+                vec![65534],                                            // operands
+                Instructions(vec![Opcode::Constant as u8, 0xFF, 0xFE]), // expected
             ),
-            (
-                Opcode::OpAdd,
-                vec![],
-                Instructions(vec![Opcode::OpAdd as u8]),
-            ),
+            (Opcode::Add, vec![], Instructions(vec![Opcode::Add as u8])),
         ];
 
         for test in tests.iter() {
             let (op, operands, expected) = test;
-            let instruction = make(op.to_owned(), operands.to_owned());
+            let instruction = op.make(operands.to_owned());
             assert_eq!(instruction, *expected);
         }
     }
 
     #[test]
     fn test_read_operands() {
-        let tests = [(Opcode::OpConstant, vec![65534], 2)];
+        let tests = [(Opcode::Constant, vec![65534], 2)];
 
         for (op, operands, bytes_read) in tests.iter() {
-            let instruction = make(op.to_owned(), operands.to_owned());
-            if let Some(def) = lookup(op) {
-                let (operands_read, offset) = read_operands(def, &instruction);
+            let instruction = op.make(operands.to_owned());
+            let def = op.definition();
+            let (operands_read, offset) = instruction.read_operands(def);
 
-                assert_eq!(&offset, bytes_read);
-                assert_eq!(&operands_read, operands);
-            } else {
-                panic!("definition not found");
-            }
+            assert_eq!(&offset, bytes_read);
+            assert_eq!(&operands_read, operands);
         }
     }
 }

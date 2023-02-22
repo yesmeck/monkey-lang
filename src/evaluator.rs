@@ -539,7 +539,7 @@ mod tests {
         enviroment::Enviroment,
         lexer::Lexer,
         object::{Boolean, HashKey, HashKeyable, Inspector, Integer, Object, Str},
-        parser::Parser, test_helper::{test_integer_object, test_boolean_object, test_null_object},
+        parser::Parser, test_helper::{test_integer_object, test_boolean_object, test_null_object, test_string_object},
     };
 
     fn test_eval(input: &str) -> Rc<Object> {
@@ -549,14 +549,6 @@ mod tests {
         let mut program = parser.parse_program();
         let mut evaluator = Evaluator::new(env);
         evaluator.eval(&mut program)
-    }
-
-    fn test_string_object(object: &Rc<Object>, expected: String) {
-        if let Object::Str(ref string) = **object {
-            assert_eq!(string.value, expected);
-        } else {
-            panic!("not a string");
-        }
     }
 
     fn test_error_object(object: &Rc<Object>, expected: String) {
@@ -787,14 +779,14 @@ mod tests {
     fn test_string_literal() {
         let input = "\"Hello world!\"";
 
-        test_string_object(&test_eval(input), "Hello world!".into());
+        test_string_object(&test_eval(input), "Hello world!");
     }
 
     #[test]
     fn test_string_concatenation() {
         let input = "\"Hello\" + \" \" + \"world!\"";
 
-        test_string_object(&test_eval(input), "Hello world!".into());
+        test_string_object(&test_eval(input), "Hello world!");
     }
 
     #[test]

@@ -21,6 +21,7 @@ mod code;
 mod compiler;
 mod symbol_table;
 mod vm;
+#[cfg(test)]
 mod test_helper;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

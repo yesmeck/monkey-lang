@@ -5,7 +5,7 @@ use byteorder::{BigEndian, ByteOrder};
 use crate::{
     code::{Instructions, Opcode},
     compiler::Bytecode,
-    object::{Boolean, Integer, Null, Object},
+    object::{Boolean, Integer, Null, Object, Str, Array},
 };
 
 const STACK_SIZE: usize = 2048;
@@ -57,26 +57,26 @@ impl Vm {
         while ip < self.instructions.len() {
             let op = Opcode::from(self.instructions.0[ip]);
             match op {
-                Opcode::OpConstant => {
+                Opcode::Constant => {
                     let const_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
                     ip += 2;
                     let constant = self.constants.get(const_index as usize).unwrap().to_owned();
                     self.push(constant.into());
                 }
-                Opcode::OpTrue => self.push(Rc::clone(&self.true_object)),
-                Opcode::OpFalse => self.push(Rc::clone(&self.false_object)),
-                Opcode::OpAdd | Opcode::OpSub | Opcode::OpMul | Opcode::OpDiv => {
+                Opcode::True => self.push(Rc::clone(&self.true_object)),
+                Opcode::False => self.push(Rc::clone(&self.false_object)),
+                Opcode::Add | Opcode::Sub | Opcode::Mul | Opcode::Div => {
                     self.execute_binary_operation(&op);
                 }
-                Opcode::OpEqual | Opcode::OpNotEqual | Opcode::OpGreaterThan => {
+                Opcode::Equal | Opcode::NotEqual | Opcode::GreaterThan => {
                     self.execute_comparison(&op);
                 }
-                Opcode::OpMinus => self.execute_minus_operator(),
-                Opcode::OpBang => self.execute_bang_operator(),
-                Opcode::OpPop => {
+                Opcode::Minus => self.execute_minus_operator(),
+                Opcode::Bang => self.execute_bang_operator(),
+                Opcode::Pop => {
                     self.pop();
                 }
-                Opcode::OpJumpNotTruth => {
+                Opcode::JumpNotTruth => {
                     let pos = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
                     ip += 2;
 
@@ -86,23 +86,30 @@ impl Vm {
                         ip = pos as usize - 1;
                     }
                 }
-                Opcode::OpJump => {
+                Opcode::Jump => {
                     let pos = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
                     ip = pos as usize - 1;
                 }
-                Opcode::OpNull => self.push(Rc::clone(&self.null_object)),
-                Opcode::OpGetGlobal => {
+                Opcode::Null => self.push(Rc::clone(&self.null_object)),
+                Opcode::GetGlobal => {
                     let global_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
                     ip += 2;
                     let var = Rc::clone(self.globals.get(global_index as usize).unwrap());
                     self.push(var);
                 }
-                Opcode::OpSetGlobal => {
+                Opcode::SetGlobal => {
                     let global_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
                     ip += 2;
                     self.globals[global_index as usize] = self.pop();
+                },
+                Opcode::Array => {
+                    let num_elements = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
+                    ip += 2;
+
+                    let array = self.build_array(self.sp - num_elements as usize, self.sp);
+                    self.sp -= num_elements as usize;
+                    self.push(array);
                 }
-                Opcode::NoOp => unreachable!(),
             }
             ip += 1;
         }
@@ -113,20 +120,36 @@ impl Vm {
         let left = self.pop();
         if let Object::Integer(ref right) = *right {
             if let Object::Integer(ref left) = *left {
-                self.execute_binary_integer_operation(op, left, right);
+                return self.execute_binary_integer_operation(op, left, right);
             }
         }
+
+        if let Object::Str(ref right) = *right {
+            if let Object::Str(ref left) = *left {
+                return self.execute_binary_string_operation(op, left, right);
+            }
+        }
+
+        panic!("unsupported types for binary operation: {} {}", left.kind(), right.kind());
     }
 
     fn execute_binary_integer_operation(&mut self, op: &Opcode, left: &Integer, right: &Integer) {
         let result = match op {
-            Opcode::OpAdd => left.value + right.value,
-            Opcode::OpSub => left.value - right.value,
-            Opcode::OpMul => left.value * right.value,
-            Opcode::OpDiv => left.value / right.value,
+            Opcode::Add => left.value + right.value,
+            Opcode::Sub => left.value - right.value,
+            Opcode::Mul => left.value * right.value,
+            Opcode::Div => left.value / right.value,
             _ => panic!("unknown integer operator: {:?}", op),
         };
         self.push(Object::Integer(Integer::new(result)).into());
+    }
+
+    fn execute_binary_string_operation(&mut self, op: &Opcode, left: &Str, right: &Str) {
+        let result = match op {
+            Opcode::Add => format!("{}{}", left.value, right.value),
+            _ => panic!("unknown string operator: {:?}", op),
+        };
+        self.push(Object::Str(Str::new(result)).into());
     }
 
     fn execute_comparison(&mut self, op: &Opcode) {
@@ -142,8 +165,8 @@ impl Vm {
         }
 
         let result = match op {
-            Opcode::OpEqual => self.native_bool_to_boolean_object(left == right),
-            Opcode::OpNotEqual => self.native_bool_to_boolean_object(left != right),
+            Opcode::Equal => self.native_bool_to_boolean_object(left == right),
+            Opcode::NotEqual => self.native_bool_to_boolean_object(left != right),
             _ => panic!(
                 "unknown operator: {:?} ({:?} {:?})",
                 op,
@@ -161,9 +184,9 @@ impl Vm {
         right: &Integer,
     ) -> Rc<Object> {
         match op {
-            Opcode::OpEqual => self.native_bool_to_boolean_object(left.value == right.value),
-            Opcode::OpNotEqual => self.native_bool_to_boolean_object(left.value != right.value),
-            Opcode::OpGreaterThan => self.native_bool_to_boolean_object(left.value > right.value),
+            Opcode::Equal => self.native_bool_to_boolean_object(left.value == right.value),
+            Opcode::NotEqual => self.native_bool_to_boolean_object(left.value != right.value),
+            Opcode::GreaterThan => self.native_bool_to_boolean_object(left.value > right.value),
             _ => panic!("unknown operator: {:?}", op),
         }
     }
@@ -194,6 +217,18 @@ impl Vm {
             true => Rc::clone(&self.true_object),
             false => Rc::clone(&self.false_object),
         }
+    }
+
+    fn build_array(&self, start_index: usize, end_index:usize) -> Rc<Object> {
+        let mut elements = Vec::with_capacity(end_index -  start_index);
+
+        let mut i = start_index;
+        while  i < end_index {
+            elements.push(Rc::clone(&self.stack[i]));
+            i += 1;
+        }
+
+        Object::Array(Array::new(elements)).into()
     }
 
     fn is_truthy(&self, object: &Rc<Object>) -> bool {
@@ -233,14 +268,14 @@ mod tests {
         compiler::Compiler,
         object::Object,
         test_helper::{
-            parse, test_boolean_object, test_integer_object, test_null_object, ExpectedValue,
+            parse, test_boolean_object, test_integer_object, test_null_object, ExpectedValue, test_string_object, test_array_object,
         },
     };
 
     use super::Vm;
 
     #[derive(Debug)]
-    struct VmTestCase<'a>(&'a str, ExpectedValue);
+    struct VmTestCase<'a>(&'a str, ExpectedValue<'a>);
 
     fn run_vm_tests(tests: &[VmTestCase]) {
         for test in tests.iter() {
@@ -259,6 +294,8 @@ mod tests {
         match expected {
             ExpectedValue::Integer(e) => test_integer_object(actual, e.to_owned()),
             ExpectedValue::Boolean(e) => test_boolean_object(actual, e.to_owned()),
+            ExpectedValue::String(e) => test_string_object(actual, e),
+            ExpectedValue::Array(e) => test_array_object(actual, e),
             ExpectedValue::Null => test_null_object(actual),
         }
     }
@@ -348,6 +385,34 @@ mod tests {
            VmTestCase("let one = 1; one", ExpectedValue::Integer(1)),
            VmTestCase("let one = 1; let two = 2; one + two", ExpectedValue::Integer(3)),
            VmTestCase("let one = 1; let two = one + one; one + two", ExpectedValue::Integer(3)),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_string_expressions() {
+        let tests = [
+           VmTestCase(r#""monkey""#, ExpectedValue::String("monkey")),
+           VmTestCase(r#""mon" + "key""#, ExpectedValue::String("monkey")),
+           VmTestCase(r#""mon" + "key" + "banana""#, ExpectedValue::String("monkeybanana")),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_() {
+        let tests = [
+            VmTestCase(
+                "[]", ExpectedValue::Array(vec![]),
+            ),
+            VmTestCase(
+                "[1, 2, 3]", ExpectedValue::Array(vec![1, 2, 3]),
+            ),
+            VmTestCase(
+                "[1 + 2, 3 * 4 , 5 + 6]", ExpectedValue::Array(vec![3, 12, 11]),
+            )
         ];
 
         run_vm_tests(&tests);
