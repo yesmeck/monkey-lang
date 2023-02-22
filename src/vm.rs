@@ -9,6 +9,7 @@ use crate::{
 };
 
 const STACK_SIZE: usize = 2048;
+pub const GLOBAL_SIZE: usize = 65536;
 
 #[derive(Debug)]
 pub struct Vm {
@@ -21,9 +22,17 @@ pub struct Vm {
 
     stack: Vec<Rc<Object>>,
     sp: usize, // stack pointer
+    
+    pub globals: Vec<Rc<Object>>,
 }
 
 impl Vm {
+    pub fn from(bytecode: Bytecode, other: Vm) -> Self {
+        let mut vm = Self::new(bytecode);
+        vm.globals = other.globals;
+        vm
+    }
+
     pub fn new(bytecode: Bytecode) -> Self {
         let true_object = Rc::new(Object::Boolean(Boolean::new(true)));
         let false_object = Rc::new(Object::Boolean(Boolean::new(false)));
@@ -38,6 +47,8 @@ impl Vm {
             instructions: bytecode.instructions,
             stack: vec![Rc::clone(&null_object); STACK_SIZE],
             sp: 0,
+
+            globals: vec![Rc::clone(&null_object); GLOBAL_SIZE],
         }
     }
 
@@ -80,7 +91,18 @@ impl Vm {
                     ip = pos as usize - 1;
                 }
                 Opcode::OpNull => self.push(Rc::clone(&self.null_object)),
-                Opcode::NoOp => {}
+                Opcode::OpGetGlobal => {
+                    let global_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
+                    ip += 2;
+                    let var = Rc::clone(self.globals.get(global_index as usize).unwrap());
+                    self.push(var);
+                }
+                Opcode::OpSetGlobal => {
+                    let global_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
+                    ip += 2;
+                    self.globals[global_index as usize] = self.pop();
+                }
+                Opcode::NoOp => unreachable!(),
             }
             ip += 1;
         }
@@ -315,6 +337,17 @@ mod tests {
             VmTestCase("if (1 > 2) { 10 }", ExpectedValue::Null),
             VmTestCase("if (false) { 10 }", ExpectedValue::Null),
             VmTestCase("if ((if (false) { 10 })) { 10 } else { 20 }", ExpectedValue::Integer(20)),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_global_let_statements() {
+        let tests = [
+           VmTestCase("let one = 1; one", ExpectedValue::Integer(1)),
+           VmTestCase("let one = 1; let two = 2; one + two", ExpectedValue::Integer(3)),
+           VmTestCase("let one = 1; let two = one + one; one + two", ExpectedValue::Integer(3)),
         ];
 
         run_vm_tests(&tests);

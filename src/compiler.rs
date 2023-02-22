@@ -7,7 +7,7 @@ use crate::{
         Statement,
     },
     code::{make, Instructions, Opcode},
-    object::{Integer, Object},
+    object::{Integer, Object}, symbol_table::SymbolTable,
 };
 
 #[derive(Debug)]
@@ -25,13 +25,24 @@ struct EmittedInstruction {
 #[derive(Debug, Default)]
 pub struct Compiler {
     instructions: Instructions,
-    constants: Vec<Object>,
+    pub constants: Vec<Object>,
 
     last_instruction: Option<EmittedInstruction>,
     previous_instruction: Option<EmittedInstruction>,
+
+    pub symbol_table: SymbolTable,
 }
 
 impl Compiler {
+    pub fn from(other: Self) -> Self {
+        Self {
+            symbol_table: other.symbol_table,
+            constants: other.constants,
+
+            ..Default::default()
+        }
+    }
+
     pub fn compile(&mut self, node: &Program) {
         self.compile_program(node);
     }
@@ -56,7 +67,14 @@ impl Compiler {
         }
     }
 
-    fn compile_let_statement(&mut self, node: &LetStatement) {}
+    fn compile_let_statement(&mut self, node: &LetStatement) {
+        self.compile_expression(&node.value);
+        let symbol = self.symbol_table.define(
+            node.name.value.as_str()
+        );
+        let symbol_index = symbol.index;
+        self.emit(Opcode::OpSetGlobal, vec![symbol_index]);
+    }
 
     fn compile_return_statement(&mut self, node: &ReturnStatement) {}
 
@@ -74,7 +92,12 @@ impl Compiler {
             Expression::HashLiteral(_) => todo!(),
             Expression::FunctionLiteral(_) => todo!(),
             Expression::Boolean(node) => self.compiler_boolean_expression(node),
-            Expression::Identifier(_) => todo!(),
+            Expression::Identifier(node) => {
+                match self.symbol_table.resolve(&node.value) {
+                    Some(symbol) => self.emit(Opcode::OpGetGlobal, vec![symbol.index]),
+                    None => panic!("undefined variable {}", node.value),
+                };
+            }
             Expression::Infix(node) => self.compile_infix_expression(node),
             Expression::Prefix(node) => self.compile_prefix_expression(node),
             Expression::If(node) => self.compile_if_expression(node),
@@ -199,7 +222,7 @@ impl Compiler {
     }
 
     fn replace_instruction(&mut self, pos: usize, new_instruction: Instructions) {
-        for (i, b) in new_instruction.0.iter().enumerate() {
+        for (i, _) in new_instruction.0.iter().enumerate() {
             self.instructions.0[pos + i] = new_instruction.0[i];
         }
     }
@@ -235,6 +258,7 @@ mod tests {
 
     fn run_compiler_tests(tests: &[CompilerTestCase]) {
         for test in tests.iter() {
+            println!("{}", test.0);
             let program = parse(test.0);
             let mut compiler = Compiler::default();
             compiler.compile(&program);
@@ -465,6 +489,50 @@ mod tests {
                     // 00014
                     make(Opcode::OpConstant, vec![2]),
                     // 00017
+                    make(Opcode::OpPop, vec![]),
+                ],
+            ),
+        ];
+
+        run_compiler_tests(&tests);
+    }
+
+    #[test]
+    fn test_global_let_statements() {
+        let tests = [
+            CompilerTestCase(
+                "let one = 1;
+                let two = 2;",
+                vec![ExpectedValue::Integer(1), ExpectedValue::Integer(2)],
+                vec![
+                    make(Opcode::OpConstant, vec![0]),
+                    make(Opcode::OpSetGlobal, vec![0]),
+                    make(Opcode::OpConstant, vec![1]),
+                    make(Opcode::OpSetGlobal, vec![1]),
+                ],
+            ),
+            CompilerTestCase(
+                "let one = 1;
+                one;",
+                vec![ExpectedValue::Integer(1)],
+                vec![
+                    make(Opcode::OpConstant, vec![0]),
+                    make(Opcode::OpSetGlobal, vec![0]),
+                    make(Opcode::OpGetGlobal, vec![0]),
+                    make(Opcode::OpPop, vec![]),
+                ],
+            ),
+            CompilerTestCase(
+                "let one = 1;
+                let two = one;
+                two;",
+                vec![ExpectedValue::Integer(1)],
+                vec![
+                    make(Opcode::OpConstant, vec![0]),
+                    make(Opcode::OpSetGlobal, vec![0]),
+                    make(Opcode::OpGetGlobal, vec![0]),
+                    make(Opcode::OpSetGlobal, vec![1]),
+                    make(Opcode::OpGetGlobal, vec![1]),
                     make(Opcode::OpPop, vec![]),
                 ],
             ),

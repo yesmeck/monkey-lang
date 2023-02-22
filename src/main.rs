@@ -19,6 +19,7 @@ mod traverser;
 mod makro;
 mod code;
 mod compiler;
+mod symbol_table;
 mod vm;
 mod test_helper;
 

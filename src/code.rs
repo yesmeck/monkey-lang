@@ -21,6 +21,8 @@ pub enum Opcode {
     OpJumpNotTruth = 13,
     OpJump = 14,
     OpNull = 15,
+    OpGetGlobal = 16,
+    OpSetGlobal = 17,
     NoOp,
 }
 
@@ -43,6 +45,8 @@ impl Opcode {
             13 => Self::OpJumpNotTruth,
             14 => Self::OpJump,
             15 => Self::OpNull,
+            16 => Self::OpGetGlobal,
+            17 => Self::OpSetGlobal,
             _ => unreachable!(),
         }
     }
@@ -67,9 +71,14 @@ lazy_static! {
             (Opcode::OpGreaterThan, Definition("OpGreaterThan", vec![])),
             (Opcode::OpMinus, Definition("OpMinus", vec![])),
             (Opcode::OpBang, Definition("OpBang", vec![])),
-            (Opcode::OpJumpNotTruth, Definition("OpJumpNotTruth", vec![2])),
+            (
+                Opcode::OpJumpNotTruth,
+                Definition("OpJumpNotTruth", vec![2]),
+            ),
             (Opcode::OpJump, Definition("OpJump", vec![2])),
             (Opcode::OpNull, Definition("OpNull", vec![])),
+            (Opcode::OpGetGlobal, Definition("OpGetGlobal", vec![2])),
+            (Opcode::OpSetGlobal, Definition("OpSetGlobal", vec![2])),
         ])
     };
 }
