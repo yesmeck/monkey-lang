@@ -1,11 +1,11 @@
-use std::rc::Rc;
+use std::{rc::Rc, collections::HashMap};
 
 use byteorder::{BigEndian, ByteOrder};
 
 use crate::{
     code::{Instructions, Opcode},
     compiler::Bytecode,
-    object::{Boolean, Integer, Null, Object, Str, Array},
+    object::{Array, Boolean, Integer, Null, Object, Str, RuntimeError, HashKeyable, Hash},
 };
 
 const STACK_SIZE: usize = 2048;
@@ -22,7 +22,7 @@ pub struct Vm {
 
     stack: Vec<Rc<Object>>,
     sp: usize, // stack pointer
-    
+
     pub globals: Vec<Rc<Object>>,
 }
 
@@ -101,7 +101,7 @@ impl Vm {
                     let global_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
                     ip += 2;
                     self.globals[global_index as usize] = self.pop();
-                },
+                }
                 Opcode::Array => {
                     let num_elements = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
                     ip += 2;
@@ -109,6 +109,14 @@ impl Vm {
                     let array = self.build_array(self.sp - num_elements as usize, self.sp);
                     self.sp -= num_elements as usize;
                     self.push(array);
+                }
+                Opcode::Hash => {
+                    let num_elements = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
+                    ip += 2;
+
+                    let hash = self.build_hash(self.sp - num_elements as usize, self.sp);
+                    self.sp -= num_elements as usize;
+                    self.push(hash);
                 }
             }
             ip += 1;
@@ -130,7 +138,11 @@ impl Vm {
             }
         }
 
-        panic!("unsupported types for binary operation: {} {}", left.kind(), right.kind());
+        panic!(
+            "unsupported types for binary operation: {} {}",
+            left.kind(),
+            right.kind()
+        );
     }
 
     fn execute_binary_integer_operation(&mut self, op: &Opcode, left: &Integer, right: &Integer) {
@@ -219,16 +231,46 @@ impl Vm {
         }
     }
 
-    fn build_array(&self, start_index: usize, end_index:usize) -> Rc<Object> {
-        let mut elements = Vec::with_capacity(end_index -  start_index);
+    fn build_array(&self, start_index: usize, end_index: usize) -> Rc<Object> {
+        let mut elements = Vec::with_capacity(end_index - start_index);
 
         let mut i = start_index;
-        while  i < end_index {
+        while i < end_index {
             elements.push(Rc::clone(&self.stack[i]));
             i += 1;
         }
 
         Object::Array(Array::new(elements)).into()
+    }
+
+    fn build_hash(&self, start_index: usize, end_index: usize) -> Rc<Object> {
+        let mut members = HashMap::new();
+
+        let mut i = start_index;
+        while i < end_index {
+            let key =  &self.stack[i];
+            let value = Rc::clone(&self.stack[i + 1]);
+
+            let hash_key = match **key {
+                Object::Str(ref o) => o.hash_key(),
+                Object::Integer(ref o) => o.hash_key(),
+                Object::Boolean(ref o) => o.hash_key(),
+                _ => {
+                    return Object::RuntimeError(RuntimeError::new(format!(
+                        "only string, integer and boolean can be hash key, found {}",
+                        key.kind()
+                    )))
+                    .into()
+                }
+            };
+
+            members.insert(hash_key, value);
+
+
+            i += 2;
+        }
+
+        Object::Hash(Hash::new(members)).into()
     }
 
     fn is_truthy(&self, object: &Rc<Object>) -> bool {
@@ -268,7 +310,8 @@ mod tests {
         compiler::Compiler,
         object::Object,
         test_helper::{
-            parse, test_boolean_object, test_integer_object, test_null_object, ExpectedValue, test_string_object, test_array_object,
+            parse, test_array_object, test_boolean_object, test_hash_object, test_integer_object,
+            test_null_object, test_string_object, ExpectedValue,
         },
     };
 
@@ -296,6 +339,7 @@ mod tests {
             ExpectedValue::Boolean(e) => test_boolean_object(actual, e.to_owned()),
             ExpectedValue::String(e) => test_string_object(actual, e),
             ExpectedValue::Array(e) => test_array_object(actual, e),
+            ExpectedValue::Hash(e) => test_hash_object(actual, e),
             ExpectedValue::Null => test_null_object(actual),
         }
     }
@@ -373,7 +417,10 @@ mod tests {
             VmTestCase("if (1 > 2) { 10 } else { 20 }", ExpectedValue::Integer(20)),
             VmTestCase("if (1 > 2) { 10 }", ExpectedValue::Null),
             VmTestCase("if (false) { 10 }", ExpectedValue::Null),
-            VmTestCase("if ((if (false) { 10 })) { 10 } else { 20 }", ExpectedValue::Integer(20)),
+            VmTestCase(
+                "if ((if (false) { 10 })) { 10 } else { 20 }",
+                ExpectedValue::Integer(20),
+            ),
         ];
 
         run_vm_tests(&tests);
@@ -382,9 +429,15 @@ mod tests {
     #[test]
     fn test_global_let_statements() {
         let tests = [
-           VmTestCase("let one = 1; one", ExpectedValue::Integer(1)),
-           VmTestCase("let one = 1; let two = 2; one + two", ExpectedValue::Integer(3)),
-           VmTestCase("let one = 1; let two = one + one; one + two", ExpectedValue::Integer(3)),
+            VmTestCase("let one = 1; one", ExpectedValue::Integer(1)),
+            VmTestCase(
+                "let one = 1; let two = 2; one + two",
+                ExpectedValue::Integer(3),
+            ),
+            VmTestCase(
+                "let one = 1; let two = one + one; one + two",
+                ExpectedValue::Integer(3),
+            ),
         ];
 
         run_vm_tests(&tests);
@@ -393,26 +446,40 @@ mod tests {
     #[test]
     fn test_string_expressions() {
         let tests = [
-           VmTestCase(r#""monkey""#, ExpectedValue::String("monkey")),
-           VmTestCase(r#""mon" + "key""#, ExpectedValue::String("monkey")),
-           VmTestCase(r#""mon" + "key" + "banana""#, ExpectedValue::String("monkeybanana")),
+            VmTestCase(r#""monkey""#, ExpectedValue::String("monkey")),
+            VmTestCase(r#""mon" + "key""#, ExpectedValue::String("monkey")),
+            VmTestCase(
+                r#""mon" + "key" + "banana""#,
+                ExpectedValue::String("monkeybanana"),
+            ),
         ];
 
         run_vm_tests(&tests);
     }
 
     #[test]
-    fn test_() {
+    fn test_array_literals() {
         let tests = [
+            VmTestCase("[]", ExpectedValue::Array(vec![])),
+            VmTestCase("[1, 2, 3]", ExpectedValue::Array(vec![1, 2, 3])),
             VmTestCase(
-                "[]", ExpectedValue::Array(vec![]),
+                "[1 + 2, 3 * 4 , 5 + 6]",
+                ExpectedValue::Array(vec![3, 12, 11]),
             ),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_hash_literals() {
+        let tests = [
+            VmTestCase("{}", ExpectedValue::Hash(vec![])),
+            VmTestCase("{1: 2, 2: 3}", ExpectedValue::Hash(vec![(1, 2), (2, 3)])),
             VmTestCase(
-                "[1, 2, 3]", ExpectedValue::Array(vec![1, 2, 3]),
+                "{1 + 1: 2 * 2, 3 + 3: 4 * 4}",
+                ExpectedValue::Hash(vec![(2, 4), (6, 16)]),
             ),
-            VmTestCase(
-                "[1 + 2, 3 * 4 , 5 + 6]", ExpectedValue::Array(vec![3, 12, 11]),
-            )
         ];
 
         run_vm_tests(&tests);

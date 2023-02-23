@@ -6,6 +6,7 @@ pub enum ExpectedValue<'a> {
     Boolean(bool),
     String(&'a str),
     Array(Vec<i64>),
+    Hash(Vec<(i64, i64)>),
     Null,
 }
 
@@ -49,5 +50,22 @@ pub fn test_array_object(object: &Object, expected: &[i64]) {
         for (i, e) in expected.iter().enumerate()  {
             test_integer_object(&array.elements[i], *e);
         }
+    } else {
+        panic!("not a array");
+    }
+}
+
+pub fn test_hash_object(object: &Object, expected: &[(i64, i64)]) {
+    if let Object::Hash(ref hash) = *object {
+        assert_eq!(hash.value.len(), expected.len());
+        let mut expected_iter = expected.iter();
+        for (key, value) in hash.value.iter() {
+            if let Some((ek, ev)) = expected_iter.next() {
+                assert_eq!(key.name, ek.to_string());
+                test_integer_object(value, *ev);
+            }
+        }
+    } else {
+        panic!("not a hash")
     }
 }

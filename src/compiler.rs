@@ -4,7 +4,7 @@ use crate::{
     ast::{
         ArrayLiteral, BlockStatement, BooleanExpression, Expression, ExpressionStatement,
         IfExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program,
-        ReturnStatement, Statement, StringLiteral,
+        ReturnStatement, Statement, StringLiteral, HashLiteral,
     },
     code::{Instructions, Opcode},
     object::{Integer, Object, Str},
@@ -88,7 +88,7 @@ impl Compiler {
             Expression::StringLiteral(node) => self.compile_string_literal(node),
             Expression::NullLiteral(_) => todo!(),
             Expression::ArrayLiteral(node) => self.compile_array_literal(node),
-            Expression::HashLiteral(_) => todo!(),
+            Expression::HashLiteral(node) => self.compile_hash_literal(node),
             Expression::FunctionLiteral(_) => todo!(),
             Expression::Boolean(node) => self.compiler_boolean_expression(node),
             Expression::Identifier(node) => {
@@ -185,6 +185,14 @@ impl Compiler {
         self.emit(Opcode::Array, vec![node.elements.len() as u16]);
     }
 
+    fn compile_hash_literal(&mut self, node: &HashLiteral) {
+        for member in node.members.iter() {
+            self.compile_expression(&member.key);
+            self.compile_expression(&member.value);
+        }
+        self.emit(Opcode::Hash, vec![node.members.len() as u16 * 2]);
+    }
+
     fn compiler_boolean_expression(&mut self, node: &BooleanExpression) {
         match node.value {
             true => self.emit(Opcode::True, vec![]),
@@ -259,8 +267,8 @@ mod tests {
     use crate::{
         code::{Instructions, Opcode},
         test_helper::{
-            parse, test_boolean_object, test_integer_object, test_null_object, test_string_object,
-            ExpectedValue, test_array_object,
+            parse, test_array_object, test_boolean_object, test_integer_object, test_null_object,
+            test_string_object, ExpectedValue, test_hash_object,
         },
     };
 
@@ -288,13 +296,16 @@ mod tests {
                 ExpectedValue::Boolean(e) => test_boolean_object(&actual[i], *e),
                 ExpectedValue::String(e) => test_string_object(&actual[i], e),
                 ExpectedValue::Array(e) => test_array_object(&actual[i], e),
+                ExpectedValue::Hash(e) => test_hash_object(&actual[i], e),
                 ExpectedValue::Null => test_null_object(&actual[i]),
             }
         }
     }
 
     fn test_instructions(actual: &Instructions, expected: &[Instructions]) {
-        let concated = Instructions(expected.iter().flat_map(|i| i.0.to_owned()).collect());
+        let concated = Instructions(
+            expected.iter().flat_map(|i| i.0.to_owned()).collect()
+        );
         assert_eq!(
             actual, &concated,
             "\nwrong instructions length.\nwant=\n{}got=\n{}",
@@ -625,6 +636,66 @@ mod tests {
                     Opcode::Array.make(vec![3]),
                     Opcode::Pop.make(vec![]),
                 ],
+            ),
+        ];
+
+        run_compiler_tests(&tests);
+    }
+
+    #[test]
+    fn test_hash_literals() {
+        let tests = [
+            CompilerTestCase(
+                "{}",
+                vec![],
+                vec![
+                    Opcode::Hash.make(vec![0]),
+                    Opcode::Pop.make(vec![])
+                ],
+            ),
+            CompilerTestCase(
+                "{1: 2, 3: 4, 5: 6}",
+                vec![
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Integer(2),
+                    ExpectedValue::Integer(3),
+                    ExpectedValue::Integer(4),
+                    ExpectedValue::Integer(5),
+                    ExpectedValue::Integer(6),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Constant.make(vec![2]),
+                    Opcode::Constant.make(vec![3]),
+                    Opcode::Constant.make(vec![4]),
+                    Opcode::Constant.make(vec![5]),
+                    Opcode::Hash.make(vec![6]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+            CompilerTestCase(
+                "{1: 2 + 3, 4: 5 * 6}",
+                vec![
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Integer(2),
+                    ExpectedValue::Integer(3),
+                    ExpectedValue::Integer(4),
+                    ExpectedValue::Integer(5),
+                    ExpectedValue::Integer(6),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Constant.make(vec![2]),
+                    Opcode::Add.make(vec![]),
+                    Opcode::Constant.make(vec![3]),
+                    Opcode::Constant.make(vec![4]),
+                    Opcode::Constant.make(vec![5]),
+                    Opcode::Mul.make(vec![]),
+                    Opcode::Hash.make(vec![4]),
+                    Opcode::Pop.make(vec![]),
+                ]
             ),
         ];
 

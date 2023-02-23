@@ -24,6 +24,7 @@ pub enum Opcode {
     GetGlobal = 16,
     SetGlobal = 17,
     Array = 18,
+    Hash = 19,
 }
 
 impl Opcode {
@@ -48,6 +49,7 @@ impl Opcode {
             16 => Self::GetGlobal,
             17 => Self::SetGlobal,
             18 => Self::Array,
+            19 => Self::Hash,
             _ => unreachable!(),
         }
     }
@@ -105,6 +107,7 @@ lazy_static! {
             (Opcode::GetGlobal, Definition("OpGetGlobal", vec![2])),
             (Opcode::SetGlobal, Definition("OpSetGlobal", vec![2])),
             (Opcode::Array, Definition("OpArray", vec![2])),
+            (Opcode::Hash, Definition("OpHash", vec![2])),
         ])
     };
 }
