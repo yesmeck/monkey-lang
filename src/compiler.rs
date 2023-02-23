@@ -3,8 +3,8 @@ use std::ops::Range;
 use crate::{
     ast::{
         ArrayLiteral, BlockStatement, BooleanExpression, Expression, ExpressionStatement,
-        IfExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program,
-        ReturnStatement, Statement, StringLiteral, HashLiteral,
+        HashLiteral, IfExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression,
+        Program, ReturnStatement, Statement, StringLiteral, IndexExpression,
     },
     code::{Instructions, Opcode},
     object::{Integer, Object, Str},
@@ -101,7 +101,7 @@ impl Compiler {
             Expression::Prefix(node) => self.compile_prefix_expression(node),
             Expression::If(node) => self.compile_if_expression(node),
             Expression::Call(_) => todo!(),
-            Expression::Index(_) => todo!(),
+            Expression::Index(node) =>  self.compile_index_expression(node),
             Expression::MacroLiteral(_) => unreachable!(),
         }
     }
@@ -166,6 +166,13 @@ impl Compiler {
         self.change_operand(jump_pos, afte_alternative_pos as u16);
     }
 
+    fn compile_index_expression(&mut self, node: &IndexExpression) {
+        self.compile_expression(&node.left);
+        self.compile_expression(&node.index);
+
+        self.emit(Opcode::Index, vec![]);
+    }
+
     fn compile_integer_literal(&mut self, node: &IntegerLiteral) {
         let integer = Object::Integer(Integer::new(node.value.to_owned()));
         let const_pos = self.add_constant(integer);
@@ -186,7 +193,11 @@ impl Compiler {
     }
 
     fn compile_hash_literal(&mut self, node: &HashLiteral) {
-        for member in node.members.iter() {
+        let mut members = node.members.to_owned();
+        members.sort_by(|a, b| {
+            format!("{}", a.key).cmp(&format!("{}", b.key))
+        });
+        for member in members.iter() {
             self.compile_expression(&member.key);
             self.compile_expression(&member.value);
         }
@@ -267,8 +278,8 @@ mod tests {
     use crate::{
         code::{Instructions, Opcode},
         test_helper::{
-            parse, test_array_object, test_boolean_object, test_integer_object, test_null_object,
-            test_string_object, ExpectedValue, test_hash_object,
+            parse, test_array_object, test_boolean_object, test_hash_object, test_integer_object,
+            test_null_object, test_string_object, ExpectedValue,
         },
     };
 
@@ -303,9 +314,7 @@ mod tests {
     }
 
     fn test_instructions(actual: &Instructions, expected: &[Instructions]) {
-        let concated = Instructions(
-            expected.iter().flat_map(|i| i.0.to_owned()).collect()
-        );
+        let concated = Instructions(expected.iter().flat_map(|i| i.0.to_owned()).collect());
         assert_eq!(
             actual, &concated,
             "\nwrong instructions length.\nwant=\n{}got=\n{}",
@@ -648,10 +657,7 @@ mod tests {
             CompilerTestCase(
                 "{}",
                 vec![],
-                vec![
-                    Opcode::Hash.make(vec![0]),
-                    Opcode::Pop.make(vec![])
-                ],
+                vec![Opcode::Hash.make(vec![0]), Opcode::Pop.make(vec![])],
             ),
             CompilerTestCase(
                 "{1: 2, 3: 4, 5: 6}",
@@ -695,7 +701,55 @@ mod tests {
                     Opcode::Mul.make(vec![]),
                     Opcode::Hash.make(vec![4]),
                     Opcode::Pop.make(vec![]),
-                ]
+                ],
+            ),
+        ];
+
+        run_compiler_tests(&tests);
+    }
+
+    #[test]
+    fn test_index_expressions() {
+        let tests = [
+            CompilerTestCase(
+                "[1, 2, 3][1 + 1]",
+                vec![
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Integer(2),
+                    ExpectedValue::Integer(3),
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Integer(1),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Constant.make(vec![2]),
+                    Opcode::Array.make(vec![3]),
+                    Opcode::Constant.make(vec![3]),
+                    Opcode::Constant.make(vec![4]),
+                    Opcode::Add.make(vec![]),
+                    Opcode::Index.make(vec![]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+            CompilerTestCase(
+                "{1: 2}[2 - 1]",
+                vec![
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Integer(2),
+                    ExpectedValue::Integer(2),
+                    ExpectedValue::Integer(1),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Hash.make(vec![2]),
+                    Opcode::Constant.make(vec![2]),
+                    Opcode::Constant.make(vec![3]),
+                    Opcode::Sub.make(vec![]),
+                    Opcode::Index.make(vec![]),
+                    Opcode::Pop.make(vec![]),
+                ],
             ),
         ];
 

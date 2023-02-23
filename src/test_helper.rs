@@ -1,4 +1,4 @@
-use crate::{ast::Program, lexer::Lexer, object::Object, parser::Parser};
+use crate::{ast::Program, lexer::Lexer, object::{Object, Integer, HashKeyable}, parser::Parser};
 
 #[derive(Debug)]
 pub enum ExpectedValue<'a> {
@@ -58,12 +58,10 @@ pub fn test_array_object(object: &Object, expected: &[i64]) {
 pub fn test_hash_object(object: &Object, expected: &[(i64, i64)]) {
     if let Object::Hash(ref hash) = *object {
         assert_eq!(hash.value.len(), expected.len());
-        let mut expected_iter = expected.iter();
-        for (key, value) in hash.value.iter() {
-            if let Some((ek, ev)) = expected_iter.next() {
-                assert_eq!(key.name, ek.to_string());
-                test_integer_object(value, *ev);
-            }
+
+        for (key, value) in expected.iter() {
+            let key_obj = Integer::new(*key);
+            test_integer_object(hash.value.get(&key_obj.hash_key()).unwrap(), *value);
         }
     } else {
         panic!("not a hash")

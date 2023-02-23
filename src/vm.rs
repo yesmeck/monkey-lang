@@ -1,11 +1,11 @@
-use std::{rc::Rc, collections::HashMap};
+use std::{collections::HashMap, rc::Rc};
 
 use byteorder::{BigEndian, ByteOrder};
 
 use crate::{
     code::{Instructions, Opcode},
     compiler::Bytecode,
-    object::{Array, Boolean, Integer, Null, Object, Str, RuntimeError, HashKeyable, Hash},
+    object::{Array, Boolean, Hash, HashKeyable, Integer, Null, Object, RuntimeError, Str},
 };
 
 const STACK_SIZE: usize = 2048;
@@ -118,6 +118,7 @@ impl Vm {
                     self.sp -= num_elements as usize;
                     self.push(hash);
                 }
+                Opcode::Index => self.execute_index_expression(),
             }
             ip += 1;
         }
@@ -224,6 +225,45 @@ impl Vm {
         }
     }
 
+    fn execute_index_expression(&mut self) {
+        let index = self.pop();
+        let left = self.pop();
+
+        match *left {
+            Object::Array(ref array) => self.execute_array_index(array, &index),
+            Object::Hash(ref hash) => self.execute_hash_index(hash, &index),
+            _ => panic!("index operator not supported: {}", left.kind()),
+        }
+    }
+
+    fn execute_array_index(&mut self, left: &Array, index: &Object) {
+        if let Object::Integer(integer) = index {
+            let index = integer.value;
+            if index < 0 || index > (left.elements.len() as i64 - 1) {
+                self.push(Rc::clone(&self.null_object))
+            } else {
+                self.push(Rc::clone(&left.elements[index as usize]))
+            }
+        } else {
+            self.push(Rc::clone(&self.null_object))
+        }
+    }
+
+    fn execute_hash_index(&mut self, left: &Hash, key: &Object) {
+        let hash_key = match *key {
+            Object::Str(ref o) => o.hash_key(),
+            Object::Integer(ref o) => o.hash_key(),
+            Object::Boolean(ref o) => o.hash_key(),
+            _ => return self.push(Rc::clone(&self.null_object)),
+        };
+
+        if let Some(object) = left.value.get(&hash_key) {
+            self.push(Rc::clone(object));
+        } else {
+            self.push(Rc::clone(&self.null_object))
+        }
+    }
+
     fn native_bool_to_boolean_object(&self, native: bool) -> Rc<Object> {
         match native {
             true => Rc::clone(&self.true_object),
@@ -248,7 +288,7 @@ impl Vm {
 
         let mut i = start_index;
         while i < end_index {
-            let key =  &self.stack[i];
+            let key = &self.stack[i];
             let value = Rc::clone(&self.stack[i + 1]);
 
             let hash_key = match **key {
@@ -265,7 +305,6 @@ impl Vm {
             };
 
             members.insert(hash_key, value);
-
 
             i += 2;
         }
@@ -480,6 +519,24 @@ mod tests {
                 "{1 + 1: 2 * 2, 3 + 3: 4 * 4}",
                 ExpectedValue::Hash(vec![(2, 4), (6, 16)]),
             ),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_index_expressions() {
+        let tests = [
+            VmTestCase("[1, 2, 3][1]", ExpectedValue::Integer(2)),
+            VmTestCase("[1, 2, 3][0 + 2]", ExpectedValue::Integer(3)),
+            VmTestCase("[[1, 1, 1]][0][0]", ExpectedValue::Integer(1)),
+            VmTestCase("[][0]", ExpectedValue::Null),
+            VmTestCase("[1, 2, 3][99]", ExpectedValue::Null),
+            VmTestCase("[1][-1]", ExpectedValue::Null),
+            VmTestCase("{1: 1, 2: 2}[1]", ExpectedValue::Integer(1)),
+            VmTestCase("{1: 1, 2: 2}[2]", ExpectedValue::Integer(2)),
+            VmTestCase("{1: 1}[0]", ExpectedValue::Null),
+            VmTestCase("{}[0]", ExpectedValue::Null),
         ];
 
         run_vm_tests(&tests);
