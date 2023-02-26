@@ -204,7 +204,10 @@ impl Compiler {
 
     fn compile_call_expression(&mut self, node: &CallExpression) {
         self.compile_expression(&node.callee);
-        self.emit(Opcode::Call, vec![]);
+        for arg in node.arguments.iter() {
+            self.compile_expression(arg);
+        }
+        self.emit(Opcode::Call, vec![node.arguments.len() as u16]);
     }
 
     fn compile_index_expression(&mut self, node: &IndexExpression) {
@@ -245,6 +248,11 @@ impl Compiler {
 
     fn compile_function_literal(&mut self, node: &FunctionLiteral) {
         self.enter_scope();
+
+        for paramteter in node.parameters.iter() {
+            self.symbol_table.borrow_mut().define(&paramteter.value);
+        }
+
         self.compile_block_statsment(&node.body);
 
         if self.last_instruction_is(Opcode::Pop) {
@@ -259,6 +267,7 @@ impl Compiler {
         let object = Object::CompiledFunction(CompiledFunction::new(
             instructions,
             num_locals,
+            node.parameters.len() as u8,
         ));
         let pos = self.add_constant(object);
         self.emit(Opcode::Constant, vec![pos]);
@@ -985,7 +994,7 @@ mod tests {
                 ],
                 vec![
                     Opcode::Constant.make(vec![1]),
-                    Opcode::Call.make(vec![]),
+                    Opcode::Call.make(vec![0]),
                     Opcode::Pop.make(vec![]),
                 ],
             ),
@@ -1002,7 +1011,7 @@ mod tests {
                     Opcode::Constant.make(vec![1]),
                     Opcode::SetGlobal.make(vec![0]),
                     Opcode::GetGlobal.make(vec![0]),
-                    Opcode::Call.make(vec![]),
+                    Opcode::Call.make(vec![0]),
                     Opcode::Pop.make(vec![]),
                 ],
             ),
@@ -1060,6 +1069,50 @@ mod tests {
                     ]),
                 ],
                 vec![Opcode::Constant.make(vec![2]), Opcode::Pop.make(vec![])],
+            ),
+            CompilerTestCase(
+                "let oneArg = fn(a) { a }; oneArg(24);",
+                vec![
+                    ExpectedValue::Function(vec![
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Integer(24),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::GetGlobal.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Call.make(vec![1]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+            CompilerTestCase(
+                "let manyArg = fn(a, b, c) { a; b; c }; manyArg(24, 25, 26);",
+                vec![
+                    ExpectedValue::Function(vec![
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Pop.make(vec![]),
+                        Opcode::GetLocal.make(vec![1]),
+                        Opcode::Pop.make(vec![]),
+                        Opcode::GetLocal.make(vec![2]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Integer(24),
+                    ExpectedValue::Integer(25),
+                    ExpectedValue::Integer(26),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::GetGlobal.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Constant.make(vec![2]),
+                    Opcode::Constant.make(vec![3]),
+                    Opcode::Call.make(vec![3]),
+                    Opcode::Pop.make(vec![]),
+                ],
             ),
         ];
 

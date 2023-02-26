@@ -123,7 +123,7 @@ lazy_static! {
             (Opcode::Array, Definition("OpArray", vec![2])),
             (Opcode::Hash, Definition("OpHash", vec![2])),
             (Opcode::Index, Definition("OpIndex", vec![])),
-            (Opcode::Call, Definition("OpCall", vec![])),
+            (Opcode::Call, Definition("OpCall", vec![1])),
             (Opcode::ReturnValue, Definition("OpReturnValue", vec![])),
             (Opcode::GetLocal, Definition("OpGetLocal", vec![1])),
             (Opcode::SetLocal, Definition("OpSetLocal", vec![1])),

@@ -446,13 +446,15 @@ impl Inspector for Quote {
 pub struct CompiledFunction {
     pub instructions: Instructions,
     pub num_locals: u16,
+    pub num_parameters: u8,
 }
 
 impl CompiledFunction {
-    pub fn new(instructions: Instructions, num_locals: u16) -> Self {
+    pub fn new(instructions: Instructions, num_locals: u16, num_parameters: u8) -> Self {
         Self {
             instructions,
             num_locals,
+            num_parameters,
         }
     }
 }
@@ -463,6 +465,6 @@ impl Inspector for CompiledFunction {
     }
 
     fn inspect(&self) -> String {
-        "CompiledFunction[]".into()
+        format!("CompiledFunction[{:p}]", self)
     }
 }

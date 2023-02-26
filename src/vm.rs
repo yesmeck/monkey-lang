@@ -43,7 +43,7 @@ impl Vm {
         let false_object = Rc::new(Object::Boolean(Boolean::new(false)));
         let null_object = Rc::new(Object::Null(Null::default()));
 
-        let main_func = CompiledFunction::new(bytecode.instructions, 0);
+        let main_func = CompiledFunction::new(bytecode.instructions, 0, 0);
         let main_frame = Rc::new(RefCell::new(Frame::new(main_func, 0)));
         let mut frames = Vec::with_capacity(MAX_FRAMES);
         frames.push(main_frame);
@@ -174,14 +174,12 @@ impl Vm {
                 }
                 Opcode::Index => self.execute_index_expression(),
                 Opcode::Call => {
-                    let func = Rc::clone(&self.stack[self.sp - 1]);
-                    if let Object::CompiledFunction(ref func) = *func {
-                        let frame = Rc::new(RefCell::new(Frame::new(func.to_owned(), self.sp)));
-                        self.push_frame(Rc::clone(&frame));
-                        self.sp = frame.borrow().base_pointer + func.num_locals as usize;
-                    } else {
-                        panic!("calling  non-function");
-                    }
+                    let num_args = frame
+                        .borrow()
+                        .instructions()
+                        .read_u8_from(frame.borrow().ip as usize + 1);
+                    frame.borrow_mut().ip += 1;
+                    self.call_function(num_args);
                 }
                 Opcode::ReturnValue => {
                     let return_value = self.pop();
@@ -359,6 +357,26 @@ impl Vm {
         }
     }
 
+    fn call_function(&mut self, num_args: u8) {
+        let func = Rc::clone(&self.stack[self.sp - 1 - num_args as usize]);
+        if let Object::CompiledFunction(ref func) = *func {
+            if num_args != func.num_parameters {
+                panic!(
+                    "wrong number of arguments: want={}, got={}",
+                    func.num_parameters, num_args
+                );
+            }
+            let frame = Rc::new(RefCell::new(Frame::new(
+                func.to_owned(),
+                self.sp - num_args as usize,
+            )));
+            self.push_frame(Rc::clone(&frame));
+            self.sp = frame.borrow().base_pointer + func.num_locals as usize;
+        } else {
+            panic!("calling  non-function");
+        }
+    }
+
     fn native_bool_to_boolean_object(&self, native: bool) -> Rc<Object> {
         match native {
             true => Rc::clone(&self.true_object),
@@ -432,14 +450,12 @@ impl Vm {
             Rc::clone(&self.null_object)
         }
     }
-
-    pub fn stack_top(&self) -> &Object {
-        &self.stack[self.sp - 1]
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::panic;
+
     use crate::{
         compiler::Compiler,
         object::Object,
@@ -751,5 +767,93 @@ mod tests {
         ];
 
         run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_calling_functions_with_arguments_and_bindings() {
+        let tests = [
+            VmTestCase(
+                "let identity = fn(a) { a; }; identity(4);",
+                ExpectedValue::Integer(4),
+            ),
+            VmTestCase(
+                "let sum = fn(a, b) { a + b; }; sum(1, 2);",
+                ExpectedValue::Integer(3),
+            ),
+            VmTestCase(
+                "let sum = fn(a, b) {
+                    let c = a + b;
+                    c; 
+                };
+                sum(1, 2);",
+                ExpectedValue::Integer(3),
+            ),
+            VmTestCase(
+                "let sum = fn(a, b) {
+                    let c = a + b;
+                    c; 
+                };
+                sum(1, 2) + sum(3, 4);",
+                ExpectedValue::Integer(10),
+            ),
+            VmTestCase(
+                "let sum = fn(a, b) {
+                    let c = a + b;
+                    c; 
+                };
+                let outer = fn() {
+                    sum(1, 2) + sum(3, 4);
+                };
+                outer();",
+                ExpectedValue::Integer(10),
+            ),
+            VmTestCase(
+                "let globalNum = 10;
+                let sum = fn(a, b) {
+                    let c = a + b;
+                    c + globalNum;
+                };
+                let outer = fn() {
+                    sum(1, 2) + sum(3, 4) + globalNum;
+                };
+                outer() + globalNum;",
+                ExpectedValue::Integer(50),
+            ),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_calling_functions_with_wrong_arguments() {
+        let tests = [
+            (
+                "fn() { 1; }(1);",
+                "wrong number of arguments: want=0, got=1",
+            ),
+            (
+                "fn(a) { a; }();",
+                "wrong number of arguments: want=1, got=0",
+            ),
+            (
+                "fn(a, b) { a + b; }(1);",
+                "wrong number of arguments: want=2, got=1",
+            ),
+        ];
+
+        for (input, expected) in tests.iter() {
+            let result = panic::catch_unwind(|| {
+                let program = parse(input);
+                let mut compiler = Compiler::new();
+                compiler.compile(&program);
+                let mut vm = Vm::new(compiler.bytecode());
+                vm.run();
+            });
+            if let Err(error) = result {
+                assert_eq!(*error.downcast::<String>().unwrap(), *expected);
+            } else {
+                panic!("should panic");
+            }
+        }
     }
 }
