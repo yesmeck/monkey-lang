@@ -4,7 +4,7 @@ use fxhash::FxHasher64;
 
 use crate::{
     ast::{BlockStatement, Expression, Identifier},
-    enviroment::Enviroment,
+    enviroment::Enviroment, code::Instructions,
 };
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
@@ -20,6 +20,7 @@ pub enum ObjectKind {
     Array,
     Hash,
     Quote,
+    CompileFunction,
 }
 
 impl Display for ObjectKind {
@@ -36,6 +37,7 @@ impl Display for ObjectKind {
             Self::Array => write!(f, "ARRAY"),
             Self::Hash => write!(f, "HASH"),
             Self::Quote => write!(f, "QUOTE"),
+            Self::CompileFunction => write!(f, "COMPILED_FUNCTION")
         }
     }
 }
@@ -52,6 +54,7 @@ pub enum Object {
     RuntimeError(RuntimeError),
     Function(Function),
     BuiltinFunction(BuiltinFunction),
+    CompiledFunction(CompiledFunction),
     Quote(Quote),
     Macro(Macro),
 }
@@ -69,6 +72,7 @@ impl Object {
             Self::RuntimeError(o) => o.kind(),
             Self::Function(o) => o.kind(),
             Self::BuiltinFunction(o) => o.kind(),
+            Self::CompiledFunction(o) => o.kind(),
             Self::Quote(o) => o.kind(),
             Self::Macro(o) => o.kind(),
         }
@@ -86,6 +90,7 @@ impl Object {
             Self::RuntimeError(o) => o.inspect(),
             Self::Function(o) => o.inspect(),
             Self::BuiltinFunction(o) => o.inspect(),
+            Self::CompiledFunction(o) => o.inspect(),
             Self::Quote(o) => o.inspect(),
             Self::Macro(o) => o.inspect(),
         }
@@ -433,5 +438,24 @@ impl Inspector for Quote {
 
     fn inspect(&self) -> String {
         format!("QUOTE({})", self.node)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct CompiledFunction {
+    pub instructions: Instructions,
+}
+
+impl CompiledFunction {
+    pub fn new(instructions: Instructions) -> Self { Self { instructions } }
+}
+
+impl Inspector for CompiledFunction {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::CompileFunction
+    }
+
+    fn inspect(&self) -> String {
+        "CompiledFunction[]".into()
     }
 }

@@ -53,7 +53,7 @@ impl<'a> Repl<'a> {
     }
 
     fn start_with_vm(&self) {
-        let mut compiler = Compiler::default();
+        let mut compiler = Compiler::new();
         let mut vm = Vm::new(compiler.bytecode());
         self.prompt();
         let stdin = io::stdin();

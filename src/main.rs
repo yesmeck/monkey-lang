@@ -21,6 +21,8 @@ mod code;
 mod compiler;
 mod symbol_table;
 mod vm;
+mod frame;
+
 #[cfg(test)]
 mod test_helper;
 
@@ -64,7 +66,7 @@ fn run(file: &PathBuf, engine: &Engine) {
     }
     match engine {
         Engine::Vm => {
-            let mut compiler = Compiler::default();
+            let mut compiler = Compiler::new();
             compiler.compile(&program);
             let mut vm = Vm::new(compiler.bytecode());
             vm.run();

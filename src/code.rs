@@ -26,6 +26,9 @@ pub enum Opcode {
     Array = 18,
     Hash = 19,
     Index = 20,
+    Call = 21,
+    ReturnValue = 22,
+    Return = 23,
 }
 
 impl Opcode {
@@ -52,6 +55,9 @@ impl Opcode {
             18 => Self::Array,
             19 => Self::Hash,
             20 => Self::Index,
+            21 => Self::Call,
+            22 => Self::ReturnValue,
+            23 => Self::Return,
             _ => unreachable!(),
         }
     }
@@ -111,6 +117,8 @@ lazy_static! {
             (Opcode::Array, Definition("OpArray", vec![2])),
             (Opcode::Hash, Definition("OpHash", vec![2])),
             (Opcode::Index, Definition("OpIndex", vec![])),
+            (Opcode::Call, Definition("OpCall", vec![])),
+            (Opcode::ReturnValue, Definition("OpReturnValue", vec![])),
         ])
     };
 }
@@ -129,6 +137,14 @@ impl Instructions {
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn read_u16_from(&self, pos: usize) -> u16 {
+        BigEndian::read_u16(&self.0[pos..])
+    }
+
+    pub fn read_op_at(&self, pos: usize) -> Opcode {
+        Opcode::from(self.0[pos])
     }
 
     pub fn read_operands(&self, def: &Definition) -> (Vec<u16>, usize) {
@@ -160,6 +176,12 @@ impl Instructions {
                 _ => format!("ERROR: unhandled operandCount for {}", def.0),
             }
         }
+    }
+}
+
+impl From<Vec<Instructions>> for Instructions {
+    fn from(value: Vec<Instructions>) -> Self {
+        Self(value.iter().flat_map(|i| i.0.to_owned()).collect())
     }
 }
 

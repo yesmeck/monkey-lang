@@ -1,15 +1,18 @@
-use std::{collections::HashMap, rc::Rc};
-
-use byteorder::{BigEndian, ByteOrder};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    code::{Instructions, Opcode},
+    code::Opcode,
     compiler::Bytecode,
-    object::{Array, Boolean, Hash, HashKeyable, Integer, Null, Object, RuntimeError, Str},
+    frame::Frame,
+    object::{
+        Array, Boolean, CompiledFunction, Hash, HashKeyable, Integer, Null, Object, RuntimeError,
+        Str,
+    },
 };
 
 const STACK_SIZE: usize = 2048;
 pub const GLOBAL_SIZE: usize = 65536;
+const MAX_FRAMES: usize = 1024;
 
 #[derive(Debug)]
 pub struct Vm {
@@ -18,12 +21,14 @@ pub struct Vm {
     null_object: Rc<Object>,
 
     constants: Vec<Object>,
-    instructions: Instructions,
 
     stack: Vec<Rc<Object>>,
     sp: usize, // stack pointer
 
     pub globals: Vec<Rc<Object>>,
+
+    frames: Vec<Rc<RefCell<Frame>>>,
+    frame_index: usize,
 }
 
 impl Vm {
@@ -38,28 +43,59 @@ impl Vm {
         let false_object = Rc::new(Object::Boolean(Boolean::new(false)));
         let null_object = Rc::new(Object::Null(Null::default()));
 
+        let main_func = CompiledFunction::new(bytecode.instructions);
+        let main_frame = Rc::new(RefCell::new(Frame::new(main_func)));
+        let mut frames = Vec::with_capacity(MAX_FRAMES);
+        frames.push(main_frame);
+
         Self {
             true_object,
             false_object,
             null_object: Rc::clone(&null_object),
 
             constants: bytecode.constants,
-            instructions: bytecode.instructions,
             stack: vec![Rc::clone(&null_object); STACK_SIZE],
             sp: 0,
 
             globals: vec![Rc::clone(&null_object); GLOBAL_SIZE],
+
+            frames,
+            frame_index: 1,
         }
     }
 
+    fn current_frame(&self) -> Rc<RefCell<Frame>> {
+        Rc::clone(&self.frames[self.frame_index - 1])
+    }
+
+    fn push_frame(&mut self, f: Rc<RefCell<Frame>>) {
+        self.frames.push(f);
+        self.frame_index += 1;
+    }
+
+    fn pop_frame(&mut self) -> Rc<RefCell<Frame>> {
+        let frame = self.frames.pop().unwrap();
+        self.frame_index -= 1;
+        frame
+    }
+
     pub fn run(&mut self) {
-        let mut ip = 0;
-        while ip < self.instructions.len() {
-            let op = Opcode::from(self.instructions.0[ip]);
+        while self.current_frame().borrow().ip
+            < self.current_frame().borrow().instructions().len() as isize - 1
+        {
+            let mut frame = self.current_frame();
+            frame.borrow_mut().ip += 1;
+            let op = frame
+                .borrow()
+                .instructions()
+                .read_op_at(frame.borrow().ip as usize);
             match op {
                 Opcode::Constant => {
-                    let const_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
-                    ip += 2;
+                    let const_index = frame
+                        .borrow()
+                        .instructions()
+                        .read_u16_from(frame.borrow().ip as usize + 1);
+                    frame.borrow_mut().ip += 2;
                     let constant = self.constants.get(const_index as usize).unwrap().to_owned();
                     self.push(constant.into());
                 }
@@ -77,50 +113,87 @@ impl Vm {
                     self.pop();
                 }
                 Opcode::JumpNotTruth => {
-                    let pos = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
-                    ip += 2;
+                    let pos = frame
+                        .borrow()
+                        .instructions()
+                        .read_u16_from(frame.borrow().ip as usize + 1);
+                    frame.borrow_mut().ip += 2;
 
                     let confition = self.pop();
 
                     if !self.is_truthy(&confition) {
-                        ip = pos as usize - 1;
+                        frame.borrow_mut().ip = pos as isize - 1;
                     }
                 }
                 Opcode::Jump => {
-                    let pos = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
-                    ip = pos as usize - 1;
+                    let pos = frame
+                        .borrow()
+                        .instructions()
+                        .read_u16_from((frame.borrow().ip + 1) as usize);
+                    frame.borrow_mut().ip = pos as isize - 1;
                 }
                 Opcode::Null => self.push(Rc::clone(&self.null_object)),
                 Opcode::GetGlobal => {
-                    let global_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
-                    ip += 2;
+                    let global_index = frame
+                        .borrow()
+                        .instructions()
+                        .read_u16_from((frame.borrow().ip + 1) as usize);
+                    frame.borrow_mut().ip += 2;
                     let var = Rc::clone(self.globals.get(global_index as usize).unwrap());
                     self.push(var);
                 }
                 Opcode::SetGlobal => {
-                    let global_index = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
-                    ip += 2;
+                    let global_index = frame
+                        .borrow()
+                        .instructions()
+                        .read_u16_from(frame.borrow().ip as usize + 1);
+                    frame.borrow_mut().ip += 2;
                     self.globals[global_index as usize] = self.pop();
                 }
                 Opcode::Array => {
-                    let num_elements = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
-                    ip += 2;
+                    let num_elements = frame
+                        .borrow()
+                        .instructions()
+                        .read_u16_from(frame.borrow().ip as usize + 1);
+                    frame.borrow_mut().ip += 2;
 
                     let array = self.build_array(self.sp - num_elements as usize, self.sp);
                     self.sp -= num_elements as usize;
                     self.push(array);
                 }
                 Opcode::Hash => {
-                    let num_elements = BigEndian::read_u16(&self.instructions.0[ip + 1..]);
-                    ip += 2;
+                    let num_elements = frame
+                        .borrow()
+                        .instructions()
+                        .read_u16_from(frame.borrow().ip as usize + 1);
+                    frame.borrow_mut().ip += 2;
 
                     let hash = self.build_hash(self.sp - num_elements as usize, self.sp);
                     self.sp -= num_elements as usize;
                     self.push(hash);
                 }
                 Opcode::Index => self.execute_index_expression(),
+                Opcode::Call => {
+                    let func = Rc::clone(&self.stack[self.sp - 1]);
+                    if let Object::CompiledFunction(ref func) = *func {
+                        let frame = Rc::new(RefCell::new(Frame::new(func.to_owned())));
+                        self.push_frame(Rc::clone(&frame));
+                    } else {
+                        panic!("calling  non-function");
+                    }
+                }
+                Opcode::ReturnValue => {
+                    let return_value = self.pop();
+                    self.pop_frame();
+                    self.pop();
+                    self.push(return_value);
+                }
+                Opcode::Return => {
+                    self.pop_frame();
+                    self.pop();
+                    self.push(Rc::clone(&self.null_object));
+                }
             }
-            ip += 1;
         }
     }
 
@@ -349,8 +422,9 @@ mod tests {
         compiler::Compiler,
         object::Object,
         test_helper::{
-            parse, test_array_object, test_boolean_object, test_hash_object, test_integer_object,
-            test_null_object, test_string_object, ExpectedValue,
+            parse, test_array_object, test_boolean_object, test_compiled_function,
+            test_hash_object, test_integer_object, test_null_object, test_string_object,
+            ExpectedValue,
         },
     };
 
@@ -363,7 +437,7 @@ mod tests {
         for test in tests.iter() {
             println!("{}", test.0);
             let program = parse(test.0);
-            let mut compiler = Compiler::default();
+            let mut compiler = Compiler::new();
             compiler.compile(&program);
             let mut vm = Vm::new(compiler.bytecode());
             vm.run();
@@ -379,6 +453,7 @@ mod tests {
             ExpectedValue::String(e) => test_string_object(actual, e),
             ExpectedValue::Array(e) => test_array_object(actual, e),
             ExpectedValue::Hash(e) => test_hash_object(actual, e),
+            ExpectedValue::Function(e) => test_compiled_function(actual, e),
             ExpectedValue::Null => test_null_object(actual),
         }
     }
@@ -537,6 +612,57 @@ mod tests {
             VmTestCase("{1: 1, 2: 2}[2]", ExpectedValue::Integer(2)),
             VmTestCase("{1: 1}[0]", ExpectedValue::Null),
             VmTestCase("{}[0]", ExpectedValue::Null),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_calling_function_without_arguments() {
+        let tests = [
+            VmTestCase(
+                "let fivePlusTen = fn() { 5 + 10; };fivePlusTen();",
+                ExpectedValue::Integer(15),
+            ),
+            VmTestCase(
+                "let a = fn() { 1 };
+                let b = fn() { a() + 1 };
+                let c = fn() { b() + 1 };
+                c();",
+                ExpectedValue::Integer(3),
+            ),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_functions_with_return_statment() {
+        let tests = [
+            VmTestCase(
+                "let earlyExit = fn() { return 99; 100; };earlyExit();",
+                ExpectedValue::Integer(99),
+            ),
+            VmTestCase(
+                "let earlyExit = fn() { return 99; return 100; };earlyExit();",
+                ExpectedValue::Integer(99),
+            ),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_function_without_return_value() {
+        let tests = [
+            VmTestCase("let noReturn = fn() { };noReturn();", ExpectedValue::Null),
+            VmTestCase(
+                "let noReturn = fn() { };
+           let noReturnTwo = fn() { noReturn(); };
+           noReturn();
+           noReturnTwo();",
+                ExpectedValue::Null,
+            ),
         ];
 
         run_vm_tests(&tests);

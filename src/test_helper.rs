@@ -1,4 +1,10 @@
-use crate::{ast::Program, lexer::Lexer, object::{Object, Integer, HashKeyable}, parser::Parser};
+use crate::{
+    ast::Program,
+    code::Instructions,
+    lexer::Lexer,
+    object::{HashKeyable, Integer, Object},
+    parser::Parser,
+};
 
 #[derive(Debug)]
 pub enum ExpectedValue<'a> {
@@ -7,6 +13,7 @@ pub enum ExpectedValue<'a> {
     String(&'a str),
     Array(Vec<i64>),
     Hash(Vec<(i64, i64)>),
+    Function(Vec<Instructions>),
     Null,
 }
 
@@ -47,7 +54,7 @@ pub fn test_string_object(object: &Object, expected: &str) {
 pub fn test_array_object(object: &Object, expected: &[i64]) {
     if let Object::Array(ref array) = *object {
         assert_eq!(array.elements.len(), expected.len());
-        for (i, e) in expected.iter().enumerate()  {
+        for (i, e) in expected.iter().enumerate() {
             test_integer_object(&array.elements[i], *e);
         }
     } else {
@@ -66,4 +73,21 @@ pub fn test_hash_object(object: &Object, expected: &[(i64, i64)]) {
     } else {
         panic!("not a hash")
     }
+}
+
+pub fn test_compiled_function(object: &Object, expected: &[Instructions]) {
+    if let Object::CompiledFunction(ref func) = *object {
+        test_instructions(&func.instructions, expected);
+    } else {
+        panic!("not a function")
+    }
+}
+
+pub fn test_instructions(actual: &Instructions, expected: &[Instructions]) {
+    let concated = Instructions::from(expected.to_owned());
+    assert_eq!(
+        actual, &concated,
+        "\nwrong instructions length.\nwant=\n{}got=\n{}",
+        concated, actual
+    );
 }
