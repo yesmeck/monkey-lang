@@ -4,7 +4,8 @@ use fxhash::FxHasher64;
 
 use crate::{
     ast::{BlockStatement, Expression, Identifier},
-    enviroment::Enviroment, code::Instructions,
+    code::Instructions,
+    enviroment::Enviroment,
 };
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
@@ -37,7 +38,7 @@ impl Display for ObjectKind {
             Self::Array => write!(f, "ARRAY"),
             Self::Hash => write!(f, "HASH"),
             Self::Quote => write!(f, "QUOTE"),
-            Self::CompileFunction => write!(f, "COMPILED_FUNCTION")
+            Self::CompileFunction => write!(f, "COMPILED_FUNCTION"),
         }
     }
 }
@@ -444,10 +445,16 @@ impl Inspector for Quote {
 #[derive(Debug, PartialEq, Clone)]
 pub struct CompiledFunction {
     pub instructions: Instructions,
+    pub num_locals: u16,
 }
 
 impl CompiledFunction {
-    pub fn new(instructions: Instructions) -> Self { Self { instructions } }
+    pub fn new(instructions: Instructions, num_locals: u16) -> Self {
+        Self {
+            instructions,
+            num_locals,
+        }
+    }
 }
 
 impl Inspector for CompiledFunction {

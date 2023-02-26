@@ -29,6 +29,8 @@ pub enum Opcode {
     Call = 21,
     ReturnValue = 22,
     Return = 23,
+    GetLocal = 24,
+    SetLocal = 25,
 }
 
 impl Opcode {
@@ -58,6 +60,8 @@ impl Opcode {
             21 => Self::Call,
             22 => Self::ReturnValue,
             23 => Self::Return,
+            24 => Self::GetLocal,
+            25 => Self::SetLocal,
             _ => unreachable!(),
         }
     }
@@ -74,8 +78,10 @@ impl Opcode {
 
             for (i, operand) in operands.iter().enumerate() {
                 let width = def.1[i];
-                if let 2 = width {
-                    instruction.0.write_u16::<BigEndian>(*operand).unwrap()
+                match width {
+                    1 => instruction.0.write_u8(*operand as u8).unwrap(),
+                    2 => instruction.0.write_u16::<BigEndian>(*operand).unwrap(),
+                    _ => unreachable!(),
                 }
             }
 
@@ -119,6 +125,8 @@ lazy_static! {
             (Opcode::Index, Definition("OpIndex", vec![])),
             (Opcode::Call, Definition("OpCall", vec![])),
             (Opcode::ReturnValue, Definition("OpReturnValue", vec![])),
+            (Opcode::GetLocal, Definition("OpGetLocal", vec![1])),
+            (Opcode::SetLocal, Definition("OpSetLocal", vec![1])),
         ])
     };
 }
@@ -139,6 +147,10 @@ impl Instructions {
         self.0.len()
     }
 
+    pub fn read_u8_from(&self, pos: usize) -> u8 {
+        self.0[pos]
+    }
+
     pub fn read_u16_from(&self, pos: usize) -> u16 {
         BigEndian::read_u16(&self.0[pos..])
     }
@@ -152,8 +164,10 @@ impl Instructions {
 
         let mut offset = 0;
         for (i, width) in def.1.iter().enumerate() {
-            if let 2 = width {
-                operands[i] = BigEndian::read_u16(&self.0[offset + 1..])
+            match width {
+                1 => operands[i] = self.0[offset + 1] as u16,
+                2 => operands[i] = BigEndian::read_u16(&self.0[offset + 1..]),
+                _ => unreachable!(),
             }
             offset += width.to_owned() as usize;
         }
@@ -217,12 +231,14 @@ mod tests {
     fn test_instructions_string() {
         let instructions = [
             Opcode::Add.make(vec![]),
+            Opcode::GetLocal.make(vec![1]),
             Opcode::Constant.make(vec![2]),
             Opcode::Constant.make(vec![65535]),
         ];
         let expected = "0000 OpAdd
-0001 OpConstant 2
-0004 OpConstant 65535
+0001 OpGetLocal 1
+0003 OpConstant 2
+0006 OpConstant 65535
 ";
         let concated = Instructions(instructions.iter().flat_map(|i| i.0.to_owned()).collect());
         assert_eq!(format!("{}", concated), expected);
@@ -237,6 +253,11 @@ mod tests {
                 Instructions(vec![Opcode::Constant as u8, 0xFF, 0xFE]), // expected
             ),
             (Opcode::Add, vec![], Instructions(vec![Opcode::Add as u8])),
+            (
+                Opcode::GetLocal,
+                vec![255],
+                Instructions(vec![Opcode::GetLocal as u8, 0xFF]),
+            ),
         ];
 
         for test in tests.iter() {
@@ -248,7 +269,10 @@ mod tests {
 
     #[test]
     fn test_read_operands() {
-        let tests = [(Opcode::Constant, vec![65534], 2)];
+        let tests = [
+            (Opcode::Constant, vec![65534], 2),
+            (Opcode::GetLocal, vec![255], 1),
+        ];
 
         for (op, operands, bytes_read) in tests.iter() {
             let instruction = op.make(operands.to_owned());

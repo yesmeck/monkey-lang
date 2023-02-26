@@ -1,15 +1,15 @@
-use std::ops::Range;
+use std::{cell::RefCell, ops::Range, rc::Rc};
 
 use crate::{
     ast::{
-        ArrayLiteral, BlockStatement, BooleanExpression, Expression, ExpressionStatement,
-        FunctionLiteral, HashLiteral, IfExpression, IndexExpression, InfixExpression,
-        IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement, Statement,
-        StringLiteral, CallExpression,
+        ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
+        ExpressionStatement, FunctionLiteral, HashLiteral, IfExpression, IndexExpression,
+        InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
+        Statement, StringLiteral,
     },
     code::{Instructions, Opcode},
     object::{CompiledFunction, Integer, Object, Str},
-    symbol_table::SymbolTable,
+    symbol_table::{SymbolScope, SymbolTable},
 };
 
 #[derive(Debug)]
@@ -38,7 +38,7 @@ pub struct Compiler {
     pub scopes: Vec<CompilationScope>,
     pub scope_index: usize,
 
-    pub symbol_table: SymbolTable,
+    pub symbol_table: Rc<RefCell<SymbolTable>>,
 }
 
 impl Compiler {
@@ -47,7 +47,7 @@ impl Compiler {
 
         Self {
             constants: vec![],
-            symbol_table: SymbolTable::default(),
+            symbol_table: Rc::new(RefCell::new(SymbolTable::default())),
 
             scopes: vec![main_scope],
             scope_index: 0,
@@ -89,9 +89,16 @@ impl Compiler {
 
     fn compile_let_statement(&mut self, node: &LetStatement) {
         self.compile_expression(&node.value);
-        let symbol = self.symbol_table.define(node.name.value.as_str());
+        let symbol = self
+            .symbol_table
+            .borrow_mut()
+            .define(node.name.value.as_str());
         let symbol_index = symbol.index;
-        self.emit(Opcode::SetGlobal, vec![symbol_index]);
+        let opcode = match symbol.scope {
+            SymbolScope::Global => Opcode::SetGlobal,
+            SymbolScope::Local => Opcode::SetLocal,
+        };
+        self.emit(opcode, vec![symbol_index]);
     }
 
     fn compile_return_statement(&mut self, node: &ReturnStatement) {
@@ -114,8 +121,15 @@ impl Compiler {
             Expression::FunctionLiteral(node) => self.compile_function_literal(node),
             Expression::Boolean(node) => self.compiler_boolean_expression(node),
             Expression::Identifier(node) => {
-                match self.symbol_table.resolve(&node.value) {
-                    Some(symbol) => self.emit(Opcode::GetGlobal, vec![symbol.index]),
+                let symbol = self.symbol_table.borrow().resolve(&node.value);
+                match symbol {
+                    Some(ref symbol) => {
+                        let opcode = match symbol.scope {
+                            SymbolScope::Global => Opcode::GetGlobal,
+                            SymbolScope::Local => Opcode::GetLocal,
+                        };
+                        self.emit(opcode, vec![symbol.index.to_owned()])
+                    }
                     None => panic!("undefined variable {}", node.value),
                 };
             }
@@ -240,8 +254,12 @@ impl Compiler {
             self.emit(Opcode::Return, vec![]);
         }
 
+        let num_locals = self.symbol_table.borrow().num_definitions;
         let instructions = self.leave_scope();
-        let object = Object::CompiledFunction(CompiledFunction::new(instructions));
+        let object = Object::CompiledFunction(CompiledFunction::new(
+            instructions,
+            num_locals,
+        ));
         let pos = self.add_constant(object);
         self.emit(Opcode::Constant, vec![pos]);
     }
@@ -340,6 +358,9 @@ impl Compiler {
         let scope = CompilationScope::default();
         self.scopes.push(scope);
         self.scope_index += 1;
+        self.symbol_table = Rc::new(RefCell::new(SymbolTable::new_enclosed(Rc::clone(
+            &self.symbol_table,
+        ))));
     }
 
     pub fn leave_scope(&mut self) -> Instructions {
@@ -347,6 +368,11 @@ impl Compiler {
 
         self.scopes.pop();
         self.scope_index -= 1;
+
+        let outer = self.symbol_table.borrow().outer.to_owned();
+        if let Some(ref outer) = outer {
+            self.symbol_table = Rc::clone(outer);
+        }
 
         instructions
     }
@@ -876,9 +902,7 @@ mod tests {
             ),
             CompilerTestCase(
                 "fn() {}",
-                vec![ExpectedValue::Function(vec![
-                    Opcode::Return.make(vec![])
-                ])],
+                vec![ExpectedValue::Function(vec![Opcode::Return.make(vec![])])],
                 vec![Opcode::Constant.make(vec![0]), Opcode::Pop.make(vec![])],
             ),
         ];
@@ -890,6 +914,8 @@ mod tests {
     fn test_compiler_scopes() {
         let mut compiler = Compiler::new();
         assert_eq!(compiler.scope_index, 0);
+
+        let global_symbol_table = Rc::clone(&compiler.symbol_table);
 
         compiler.emit(Opcode::Mul, vec![]);
 
@@ -909,8 +935,19 @@ mod tests {
             Opcode::Sub
         );
 
+        let current_symbol_table = Rc::clone(&compiler.symbol_table);
+
+        assert_eq!(
+            current_symbol_table.borrow().outer.as_ref().unwrap(),
+            &global_symbol_table
+        );
+
         compiler.leave_scope();
         assert_eq!(compiler.scope_index, 0);
+
+        assert_eq!(compiler.symbol_table, global_symbol_table,);
+
+        assert!(compiler.symbol_table.borrow().outer.is_none());
 
         compiler.emit(Opcode::Add, vec![]);
         assert_eq!(compiler.current_scope().instructions.len(), 2);
@@ -968,6 +1005,61 @@ mod tests {
                     Opcode::Call.make(vec![]),
                     Opcode::Pop.make(vec![]),
                 ],
+            ),
+        ];
+
+        run_compiler_tests(&tests);
+    }
+
+    #[test]
+    fn test_let_statement_scopes() {
+        let tests = [
+            CompilerTestCase(
+                "let num = 55; fn() { num }",
+                vec![
+                    ExpectedValue::Integer(55),
+                    ExpectedValue::Function(vec![
+                        Opcode::GetGlobal.make(vec![0]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+            CompilerTestCase(
+                "fn() { let num = 55; num }",
+                vec![
+                    ExpectedValue::Integer(55),
+                    ExpectedValue::Function(vec![
+                        Opcode::Constant.make(vec![0]),
+                        Opcode::SetLocal.make(vec![0]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                ],
+                vec![Opcode::Constant.make(vec![1]), Opcode::Pop.make(vec![])],
+            ),
+            CompilerTestCase(
+                "fn() { let a = 55; let b = 77; a + b }",
+                vec![
+                    ExpectedValue::Integer(55),
+                    ExpectedValue::Integer(77),
+                    ExpectedValue::Function(vec![
+                        Opcode::Constant.make(vec![0]),
+                        Opcode::SetLocal.make(vec![0]),
+                        Opcode::Constant.make(vec![1]),
+                        Opcode::SetLocal.make(vec![1]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::GetLocal.make(vec![1]),
+                        Opcode::Add.make(vec![]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                ],
+                vec![Opcode::Constant.make(vec![2]), Opcode::Pop.make(vec![])],
             ),
         ];
 

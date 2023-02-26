@@ -43,8 +43,8 @@ impl Vm {
         let false_object = Rc::new(Object::Boolean(Boolean::new(false)));
         let null_object = Rc::new(Object::Null(Null::default()));
 
-        let main_func = CompiledFunction::new(bytecode.instructions);
-        let main_frame = Rc::new(RefCell::new(Frame::new(main_func)));
+        let main_func = CompiledFunction::new(bytecode.instructions, 0);
+        let main_frame = Rc::new(RefCell::new(Frame::new(main_func, 0)));
         let mut frames = Vec::with_capacity(MAX_FRAMES);
         frames.push(main_frame);
 
@@ -83,7 +83,7 @@ impl Vm {
         while self.current_frame().borrow().ip
             < self.current_frame().borrow().instructions().len() as isize - 1
         {
-            let mut frame = self.current_frame();
+            let frame = self.current_frame();
             frame.borrow_mut().ip += 1;
             let op = frame
                 .borrow()
@@ -176,22 +176,44 @@ impl Vm {
                 Opcode::Call => {
                     let func = Rc::clone(&self.stack[self.sp - 1]);
                     if let Object::CompiledFunction(ref func) = *func {
-                        let frame = Rc::new(RefCell::new(Frame::new(func.to_owned())));
+                        let frame = Rc::new(RefCell::new(Frame::new(func.to_owned(), self.sp)));
                         self.push_frame(Rc::clone(&frame));
+                        self.sp = frame.borrow().base_pointer + func.num_locals as usize;
                     } else {
                         panic!("calling  non-function");
                     }
                 }
                 Opcode::ReturnValue => {
                     let return_value = self.pop();
-                    self.pop_frame();
-                    self.pop();
+                    let frame2 = self.pop_frame();
+                    self.sp = frame2.borrow().base_pointer - 1;
                     self.push(return_value);
                 }
                 Opcode::Return => {
-                    self.pop_frame();
-                    self.pop();
+                    let frame2 = self.pop_frame();
+                    self.sp = frame2.borrow().base_pointer - 1;
                     self.push(Rc::clone(&self.null_object));
+                }
+                Opcode::GetLocal => {
+                    let local_index = frame
+                        .borrow()
+                        .instructions()
+                        .read_u8_from((frame.borrow().ip + 1) as usize);
+                    frame.borrow_mut().ip += 1;
+                    let var = Rc::clone(
+                        self.stack
+                            .get(frame.borrow().base_pointer + local_index as usize)
+                            .unwrap(),
+                    );
+                    self.push(var);
+                }
+                Opcode::SetLocal => {
+                    let local_index = frame
+                        .borrow()
+                        .instructions()
+                        .read_u8_from((frame.borrow().ip + 1) as usize);
+                    frame.borrow_mut().ip += 1;
+                    self.stack[frame.borrow().base_pointer + local_index as usize] = self.pop();
                 }
             }
         }
@@ -662,6 +684,69 @@ mod tests {
            noReturn();
            noReturnTwo();",
                 ExpectedValue::Null,
+            ),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_first_class_functions() {
+        let tests = [
+            VmTestCase(
+                "let returnsOne = fn() { 1; };
+            let returnsOneReturner = fn() { returnsOne; };
+            returnsOneReturner()();",
+                ExpectedValue::Integer(1),
+            ),
+            VmTestCase(
+                "let returnsOneReturner = fn() {
+                    let returnsOne = fn() { 1; };
+                    returnsOne;
+                };
+                returnsOneReturner()();",
+                ExpectedValue::Integer(1),
+            ),
+        ];
+
+        run_vm_tests(&tests);
+    }
+
+    #[test]
+    fn test_calling_function_with_bingdings() {
+        let tests = [
+            VmTestCase(
+                "let one = fn() { let one = 1; one }; one();",
+                ExpectedValue::Integer(1),
+            ),
+            VmTestCase(
+                "let oneAndTwo = fn() { let one = 1; let two = 2; one + two; }; oneAndTwo();",
+                ExpectedValue::Integer(3),
+            ),
+            VmTestCase(
+                "let oneAndTwo = fn() { let one = 1; let two = 2; one + two; };
+                let threeAndFour = fn() { let three = 3; let four = 4; three + four; };
+                oneAndTwo() + threeAndFour();",
+                ExpectedValue::Integer(10),
+            ),
+            VmTestCase(
+                "let firstFoobar = fn() { let foobar = 50; foobar; };
+                let secondFoobar = fn() { let foobar = 100; foobar; };
+                firstFoobar() + secondFoobar();",
+                ExpectedValue::Integer(150),
+            ),
+            VmTestCase(
+                "let globalSeed = 50;
+                let minusOne = fn() {
+                    let num = 1;
+                    globalSeed - num;
+                }
+                let minusTwo = fn() {
+                    let num = 2;
+                    globalSeed - num;
+                }
+                minusOne() + minusTwo();",
+                ExpectedValue::Integer(97),
             ),
         ];
 
