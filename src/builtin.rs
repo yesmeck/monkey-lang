@@ -1,29 +1,19 @@
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
 
-use crate::{
-    enviroment::Enviroment,
-    object::{Array, Integer, Object, RuntimeError},
-};
+use crate::object::{Array, Integer, Null, Object, RuntimeError};
 
-#[derive(Debug)]
-pub struct Builtin<'a> {
-    functions: [&'a str; 6],
-    env: Rc<RefCell<Enviroment>>,
-}
 
-impl<'a> Builtin<'a> {
-    pub fn new(env: Rc<RefCell<Enviroment>>) -> Self {
-        Self {
-            functions: ["len", "first", "last", "rest", "push", "puts"],
-            env,
-        }
+pub static BUILTINS: [&str; 6] =  ["len", "puts", "first", "last", "rest", "push"];
+
+#[derive(Debug, Default)]
+pub struct Builtin {}
+
+impl Builtin {
+    pub fn is_builtin(&self, func: &str) -> bool {
+        BUILTINS.contains(&func)
     }
 
-    pub fn function_exists(&self, func: &str) -> bool {
-        self.functions.contains(&func)
-    }
-
-    pub fn try_function(&self, func: &str, args: Vec<Rc<Object>>) -> Option<Rc<Object>> {
+    pub fn apply_function(&self, func: &str, args: Vec<Rc<Object>>) -> Option<Rc<Object>> {
         match func {
             "len" => Some(self.len(args)),
             "first" => Some(self.first(args)),
@@ -73,7 +63,7 @@ impl<'a> Builtin<'a> {
                 array
                     .elements
                     .first()
-                    .unwrap_or(&self.env.borrow().null_object),
+                    .unwrap_or(&Rc::new(Object::Null(Null::default()))),
             ),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "argument to `first` must be ARRAY, got {}",
@@ -97,7 +87,7 @@ impl<'a> Builtin<'a> {
                 array
                     .elements
                     .last()
-                    .unwrap_or(&self.env.borrow().null_object),
+                    .unwrap_or(&Rc::new(Object::Null(Null::default()))),
             ),
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "argument to `last` must be ARRAY, got {}",
@@ -118,7 +108,11 @@ impl<'a> Builtin<'a> {
 
         match *args[0] {
             Object::Array(ref array) => {
-                Object::Array(Array::new(array.elements[1..].into())).into()
+                if array.elements.is_empty() {
+                    Object::Null(Null::default()).into()
+                }  else {
+                    Object::Array(Array::new(array.elements[1..].into())).into()
+                }
             }
             _ => Object::RuntimeError(RuntimeError::new(format!(
                 "argument to `rest` must be ARRAY, got {}",
@@ -156,6 +150,6 @@ impl<'a> Builtin<'a> {
             println!("{}", arg.inspect());
         }
 
-        Rc::clone(&self.env.borrow().null_object)
+        Object::Null(Null::default()).into()
     }
 }

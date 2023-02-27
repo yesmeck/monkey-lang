@@ -4,6 +4,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 pub enum SymbolScope {
     Global,
     Local,
+    Builtin,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -42,6 +43,12 @@ impl SymbolTable {
             }),
         );
         self.num_definitions += 1;
+        self.resolve(name).unwrap()
+    }
+
+    pub fn define_builtin(&mut self, index: u16, name: &str) -> Rc<Symbol> {
+        let symbol = Symbol {  name: name.into(), scope: SymbolScope::Builtin, index };
+        self.store.insert(name.into(), Rc::new(symbol));
         self.resolve(name).unwrap()
     }
 
@@ -289,9 +296,49 @@ mod tests {
             ),
         ];
 
-        for (scope, expected) in tests.iter() {
+        for (table, expected) in tests.iter() {
             for sym in expected.iter() {
-                assert_eq!(*(**scope).borrow().resolve(&sym.name).unwrap(), *sym);
+                assert_eq!(*(**table).borrow().resolve(&sym.name).unwrap(), *sym);
+            }
+        }
+    }
+
+    #[test]
+    fn test_define_resolve_builtins() {
+        let global = Rc::new(RefCell::new(SymbolTable::default()));
+        let first_local = Rc::new(RefCell::new(SymbolTable::new_enclosed(Rc::clone(&global))));
+        let second_local = Rc::new(RefCell::new(SymbolTable::new_enclosed(Rc::clone(&first_local))));
+
+        let expected = [
+            Symbol {
+                name: "a".into(),
+                scope: SymbolScope::Builtin,
+                index: 0,
+            },
+            Symbol {
+                name: "c".into(),
+                scope: SymbolScope::Builtin,
+                index: 1,
+            },
+            Symbol {
+                name: "e".into(),
+                scope: SymbolScope::Builtin,
+                index: 2,
+            },
+            Symbol {
+                name: "f".into(),
+                scope: SymbolScope::Builtin,
+                index: 3,
+            },
+        ];
+
+        for (i, v) in expected.iter().enumerate() {
+            global.borrow_mut().define_builtin(i as u16, &v.name);
+        }
+
+        for table in [global, first_local, second_local].iter() {
+            for sym in expected.iter() {
+                assert_eq!(*(**table).borrow().resolve(&sym.name).unwrap(), *sym);
             }
         }
     }

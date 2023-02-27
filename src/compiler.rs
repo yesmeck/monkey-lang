@@ -9,7 +9,7 @@ use crate::{
     },
     code::{Instructions, Opcode},
     object::{CompiledFunction, Integer, Object, Str},
-    symbol_table::{SymbolScope, SymbolTable},
+    symbol_table::{SymbolScope, SymbolTable}, builtin::BUILTINS,
 };
 
 #[derive(Debug)]
@@ -44,10 +44,15 @@ pub struct Compiler {
 impl Compiler {
     pub fn new() -> Self {
         let main_scope = CompilationScope::default();
+        let symbol_table = Rc::new(RefCell::new(SymbolTable::default()));
+
+        for (i, v) in BUILTINS.iter().enumerate() {
+            symbol_table.borrow_mut().define_builtin(i as u16, v);
+        }
 
         Self {
             constants: vec![],
-            symbol_table: Rc::new(RefCell::new(SymbolTable::default())),
+            symbol_table,
 
             scopes: vec![main_scope],
             scope_index: 0,
@@ -97,6 +102,7 @@ impl Compiler {
         let opcode = match symbol.scope {
             SymbolScope::Global => Opcode::SetGlobal,
             SymbolScope::Local => Opcode::SetLocal,
+            SymbolScope::Builtin => unreachable!(),
         };
         self.emit(opcode, vec![symbol_index]);
     }
@@ -127,6 +133,7 @@ impl Compiler {
                         let opcode = match symbol.scope {
                             SymbolScope::Global => Opcode::GetGlobal,
                             SymbolScope::Local => Opcode::GetLocal,
+                            SymbolScope::Builtin => Opcode::GetBuiltin,
                         };
                         self.emit(opcode, vec![symbol.index.to_owned()])
                     }
@@ -395,7 +402,7 @@ mod tests {
         test_helper::{
             parse, test_array_object, test_boolean_object, test_compiled_function,
             test_hash_object, test_instructions, test_integer_object, test_null_object,
-            test_string_object, ExpectedValue,
+            test_string_object, ExpectedValue, test_error_object,
         },
     };
 
@@ -425,6 +432,7 @@ mod tests {
                 ExpectedValue::Array(e) => test_array_object(&actual[i], e),
                 ExpectedValue::Hash(e) => test_hash_object(&actual[i], e),
                 ExpectedValue::Function(e) => test_compiled_function(&actual[i], e),
+                ExpectedValue::Error(e) => test_error_object(&actual[i], e),
                 ExpectedValue::Null => test_null_object(&actual[i]),
             }
         }
@@ -1113,6 +1121,39 @@ mod tests {
                     Opcode::Call.make(vec![3]),
                     Opcode::Pop.make(vec![]),
                 ],
+            ),
+        ];
+
+        run_compiler_tests(&tests);
+    }
+
+    #[test]
+    fn test_builtins() {
+        let tests = [
+            CompilerTestCase(
+                "len([]); push([], 1);",
+                vec![ExpectedValue::Integer(1)],
+                vec![
+                    Opcode::GetBuiltin.make(vec![0]),
+                    Opcode::Array.make(vec![0]),
+                    Opcode::Call.make(vec![1]),
+                    Opcode::Pop.make(vec![]),
+                    Opcode::GetBuiltin.make(vec![5]),
+                    Opcode::Array.make(vec![0]),
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::Call.make(vec![2]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+            CompilerTestCase(
+                "fn() { len([]) }",
+                vec![ExpectedValue::Function(vec![
+                    Opcode::GetBuiltin.make(vec![0]),
+                    Opcode::Array.make(vec![0]),
+                    Opcode::Call.make(vec![1]),
+                    Opcode::ReturnValue.make(vec![]),
+                ])],
+                vec![Opcode::Constant.make(vec![0]), Opcode::Pop.make(vec![])],
             ),
         ];
 

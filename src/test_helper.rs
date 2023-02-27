@@ -14,6 +14,7 @@ pub enum ExpectedValue<'a> {
     Array(Vec<i64>),
     Hash(Vec<(i64, i64)>),
     Function(Vec<Instructions>),
+    Error(&'a str),
     Null,
 }
 
@@ -90,4 +91,12 @@ pub fn test_instructions(actual: &Instructions, expected: &[Instructions]) {
         "\nwrong instructions length.\nwant=\n{}got=\n{}",
         concated, actual
     );
+}
+
+pub fn test_error_object(object: &Object, expected: &str) {
+    if let Object::RuntimeError(ref error) = *object {
+        assert_eq!(error.message, expected);
+    } else {
+        panic!("not a error")
+    }
 }

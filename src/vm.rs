@@ -1,12 +1,13 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
+    builtin::{Builtin, BUILTINS},
     code::Opcode,
     compiler::Bytecode,
     frame::Frame,
     object::{
-        Array, Boolean, CompiledFunction, Hash, HashKeyable, Integer, Null, Object, RuntimeError,
-        Str,
+        Array, Boolean, BuiltinFunction, CompiledFunction, Hash, HashKeyable, Integer, Null,
+        Object, RuntimeError, Str,
     },
 };
 
@@ -24,6 +25,8 @@ pub struct Vm {
 
     stack: Vec<Rc<Object>>,
     sp: usize, // stack pointer
+
+    builtin: Builtin,
 
     pub globals: Vec<Rc<Object>>,
 
@@ -56,6 +59,8 @@ impl Vm {
             constants: bytecode.constants,
             stack: vec![Rc::clone(&null_object); STACK_SIZE],
             sp: 0,
+
+            builtin: Builtin::default(),
 
             globals: vec![Rc::clone(&null_object); GLOBAL_SIZE],
 
@@ -179,7 +184,7 @@ impl Vm {
                         .instructions()
                         .read_u8_from(frame.borrow().ip as usize + 1);
                     frame.borrow_mut().ip += 1;
-                    self.call_function(num_args);
+                    self.execute_call(num_args);
                 }
                 Opcode::ReturnValue => {
                     let return_value = self.pop();
@@ -212,6 +217,15 @@ impl Vm {
                         .read_u8_from((frame.borrow().ip + 1) as usize);
                     frame.borrow_mut().ip += 1;
                     self.stack[frame.borrow().base_pointer + local_index as usize] = self.pop();
+                }
+                Opcode::GetBuiltin => {
+                    let builtin_index = frame
+                        .borrow()
+                        .instructions()
+                        .read_u8_from(frame.borrow().ip as usize + 1);
+                    frame.borrow_mut().ip += 1;
+                    let name = BUILTINS[builtin_index as usize];
+                    self.push(Object::BuiltinFunction(BuiltinFunction::new(name.into())).into());
                 }
             }
         }
@@ -357,23 +371,41 @@ impl Vm {
         }
     }
 
-    fn call_function(&mut self, num_args: u8) {
-        let func = Rc::clone(&self.stack[self.sp - 1 - num_args as usize]);
-        if let Object::CompiledFunction(ref func) = *func {
-            if num_args != func.num_parameters {
-                panic!(
-                    "wrong number of arguments: want={}, got={}",
-                    func.num_parameters, num_args
-                );
-            }
-            let frame = Rc::new(RefCell::new(Frame::new(
-                func.to_owned(),
-                self.sp - num_args as usize,
-            )));
-            self.push_frame(Rc::clone(&frame));
-            self.sp = frame.borrow().base_pointer + func.num_locals as usize;
+    fn execute_call(&mut self, num_args: u8) {
+        let callee = Rc::clone(&self.stack[self.sp - 1 - num_args as usize]);
+        match *callee {
+            Object::CompiledFunction(ref func) => self.call_function(func, num_args),
+            Object::BuiltinFunction(ref func) => self.call_builtin(func, num_args),
+            _ => panic!("calling non-function and non-built-in"),
+        }
+    }
+
+    fn call_function(&mut self, func: &CompiledFunction, num_args: u8) {
+        if num_args != func.num_parameters {
+            panic!(
+                "wrong number of arguments: want={}, got={}",
+                func.num_parameters, num_args
+            );
+        }
+        let frame = Rc::new(RefCell::new(Frame::new(
+            func.to_owned(),
+            self.sp - num_args as usize,
+        )));
+        self.push_frame(Rc::clone(&frame));
+        self.sp = frame.borrow().base_pointer + func.num_locals as usize;
+    }
+
+    fn call_builtin(&mut self, func: &BuiltinFunction, num_args: u8) {
+        let mut args = vec![];
+        let mut i = self.sp - num_args as usize;
+        while i < self.sp {
+            args.push(Rc::clone(&self.stack[i]));
+            i += 1;
+        }
+        if let Some(result) = self.builtin.apply_function(&func.name, args) {
+            self.push(result);
         } else {
-            panic!("calling  non-function");
+            self.push(Object::Null(Null::default()).into());
         }
     }
 
@@ -461,8 +493,8 @@ mod tests {
         object::Object,
         test_helper::{
             parse, test_array_object, test_boolean_object, test_compiled_function,
-            test_hash_object, test_integer_object, test_null_object, test_string_object,
-            ExpectedValue,
+            test_error_object, test_hash_object, test_integer_object, test_null_object,
+            test_string_object, ExpectedValue,
         },
     };
 
@@ -492,6 +524,7 @@ mod tests {
             ExpectedValue::Array(e) => test_array_object(actual, e),
             ExpectedValue::Hash(e) => test_hash_object(actual, e),
             ExpectedValue::Function(e) => test_compiled_function(actual, e),
+            ExpectedValue::Error(e) => test_error_object(actual, e),
             ExpectedValue::Null => test_null_object(actual),
         }
     }
@@ -855,5 +888,46 @@ mod tests {
                 panic!("should panic");
             }
         }
+    }
+
+    #[test]
+    fn test_builtin_functions() {
+        let tests = [
+            VmTestCase(r#"len("")"#, ExpectedValue::Integer(0)),
+            VmTestCase(r#"len("four")"#, ExpectedValue::Integer(4)),
+            VmTestCase(r#"len("hello world")"#, ExpectedValue::Integer(11)),
+            VmTestCase(
+                r#"len(1)"#,
+                ExpectedValue::Error("argument to `len` not supported, got INTEGER"),
+            ),
+            VmTestCase(
+                r#"len("one", "two")"#,
+                ExpectedValue::Error("wrong number of arguments. got=2, want=1"),
+            ),
+            VmTestCase(r#"len([1, 2, 3])"#, ExpectedValue::Integer(3)),
+            VmTestCase(r#"len([])"#, ExpectedValue::Integer(0)),
+            VmTestCase(r#"puts("hello", "world!")"#, ExpectedValue::Null),
+            VmTestCase(r#"first([1, 2, 3])"#, ExpectedValue::Integer(1)),
+            VmTestCase(r#"first([])"#, ExpectedValue::Null),
+            VmTestCase(
+                r#"first(1)"#,
+                ExpectedValue::Error("argument to `first` must be ARRAY, got INTEGER"),
+            ),
+            VmTestCase(r#"last([1, 2, 3])"#, ExpectedValue::Integer(3)),
+            VmTestCase(r#"last([])"#, ExpectedValue::Null),
+            VmTestCase(
+                r#"last(1)"#,
+                ExpectedValue::Error("argument to `last` must be ARRAY, got INTEGER"),
+            ),
+            VmTestCase(r#"rest([1, 2, 3])"#, ExpectedValue::Array(vec![2, 3])),
+            VmTestCase(r#"rest([])"#, ExpectedValue::Null),
+            VmTestCase(r#"push([], 1)"#, ExpectedValue::Array(vec![1])),
+            VmTestCase(
+                r#"push(1, 1)"#,
+                ExpectedValue::Error("first argument to `push` must be ARRAY, got INTEGER"),
+            ),
+        ];
+
+        run_vm_tests(&tests);
     }
 }

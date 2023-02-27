@@ -19,16 +19,16 @@ use crate::object::Hash;
 use crate::traverser::Traverable;
 
 #[derive(Debug)]
-pub struct Evaluator<'a> {
+pub struct Evaluator {
     env: Rc<RefCell<Enviroment>>,
-    builtin: Builtin<'a>,
+    builtin: Builtin,
 }
 
-impl<'a> Evaluator<'a> {
+impl Evaluator {
     pub fn new(env: Rc<RefCell<Enviroment>>) -> Self {
         Self {
             env: Rc::clone(&env),
-            builtin: Builtin::new(Rc::clone(&env)),
+            builtin: Builtin::default(),
         }
     }
 
@@ -138,7 +138,7 @@ impl<'a> Evaluator<'a> {
                 if args.len() == 1 && self.is_error(&args[0]) {
                     return args[0].clone();
                 }
-                if let Some(result) = self.builtin.try_function(&func.name, args) {
+                if let Some(result) = self.builtin.apply_function(&func.name, args) {
                     result
                 } else {
                     Object::RuntimeError(RuntimeError::new(format!(
@@ -497,7 +497,7 @@ impl<'a> Evaluator<'a> {
     fn eval_indentifier(&self, node: &Identifier) -> Rc<Object> {
         if let Some(value) = self.env.borrow().get(node.value.to_owned()) {
             value
-        } else if self.builtin.function_exists(&node.value) {
+        } else if self.builtin.is_builtin(&node.value) {
             Rc::new(Object::BuiltinFunction(BuiltinFunction::new(
                 node.value.to_owned(),
             )))
@@ -538,8 +538,8 @@ mod tests {
     use crate::{
         enviroment::Enviroment,
         lexer::Lexer,
-        object::{Boolean, HashKey, HashKeyable, Inspector, Integer, Object, Str},
-        parser::Parser, test_helper::{test_integer_object, test_boolean_object, test_null_object, test_string_object},
+        object::{Boolean, HashKey, HashKeyable, Integer, Object, Str},
+        parser::Parser, test_helper::{test_integer_object, test_boolean_object, test_null_object, test_string_object, test_error_object},
     };
 
     fn test_eval(input: &str) -> Rc<Object> {
@@ -549,14 +549,6 @@ mod tests {
         let mut program = parser.parse_program();
         let mut evaluator = Evaluator::new(env);
         evaluator.eval(&mut program)
-    }
-
-    fn test_error_object(object: &Rc<Object>, expected: String) {
-        if let Object::RuntimeError(ref error) = **object {
-            assert_eq!(error.inspect(), format!("Error: {}", expected));
-        } else {
-            panic!("not a error")
-        }
     }
 
     fn test_quote_object(object: &Rc<Object>, expected: &str) {
@@ -714,7 +706,7 @@ mod tests {
         for (input, output) in tests.iter() {
             println!("{} => {}", input, output);
             let evaluated = test_eval(input);
-            test_error_object(&evaluated, output.to_string());
+            test_error_object(&evaluated, output);
         }
     }
 
@@ -812,7 +804,7 @@ mod tests {
         }
 
         for (input, output) in error_tests.iter() {
-            test_error_object(&test_eval(input), output.to_string());
+            test_error_object(&test_eval(input), output);
         }
     }
 

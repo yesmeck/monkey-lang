@@ -31,6 +31,7 @@ pub enum Opcode {
     Return = 23,
     GetLocal = 24,
     SetLocal = 25,
+    GetBuiltin = 26,
 }
 
 impl Opcode {
@@ -62,6 +63,7 @@ impl Opcode {
             23 => Self::Return,
             24 => Self::GetLocal,
             25 => Self::SetLocal,
+            26 => Self::GetBuiltin,
             _ => unreachable!(),
         }
     }
@@ -127,6 +129,7 @@ lazy_static! {
             (Opcode::ReturnValue, Definition("OpReturnValue", vec![])),
             (Opcode::GetLocal, Definition("OpGetLocal", vec![1])),
             (Opcode::SetLocal, Definition("OpSetLocal", vec![1])),
+            (Opcode::GetBuiltin, Definition("OpGetBuiltin", vec![1])),
         ])
     };
 }
