@@ -2,20 +2,20 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::ast::{
-    ArrayLiteral, BlockStatement, FunctionLiteral, HashLiteral, Identifier, IfExpression,
-    IndexExpression, InfixExpression, LetStatement, PrefixExpression,
-    Program, ReturnStatement, Statement, CallExpression,
-};
 use crate::ast::Expression;
+use crate::ast::{
+    ArrayLiteral, BlockStatement, CallExpression, FunctionLiteral, HashLiteral, Identifier,
+    IfExpression, IndexExpression, InfixExpression, LetStatement, PrefixExpression, Program,
+    ReturnStatement, Statement,
+};
 use crate::builtin::Builtin;
 use crate::enviroment::Enviroment;
-use crate::makro::{EvalUnqupteCalls, MacroExpension};
-use crate::object::{
-    Array, BuiltinFunction, Function, HashKeyable, Inspector, Integer, Object,
-    Quote, ReturnValue, RuntimeError, Str,
-};
+use crate::makro::EvalUnqupteCalls;
 use crate::object::Hash;
+use crate::object::{
+    Array, BuiltinFunction, Function, HashKeyable, Inspector, Integer, Object, Quote, ReturnValue,
+    RuntimeError, Str,
+};
 use crate::traverser::Traverable;
 
 #[derive(Debug)]
@@ -32,11 +32,7 @@ impl Evaluator {
         }
     }
 
-    pub fn eval(&mut self, program: &mut Program) -> Rc<Object> {
-        let makro = MacroExpension::new(Rc::clone(&self.env));
-        makro.define_macros(program);
-        makro.expand_macros(program);
-
+    pub fn eval(&mut self, program: &Program) -> Rc<Object> {
         self.eval_program(program)
     }
 
@@ -180,10 +176,10 @@ impl Evaluator {
         }
     }
 
-    fn eval_program(&mut self, program: &mut Program) -> Rc<Object> {
+    fn eval_program(&mut self, program: &Program) -> Rc<Object> {
         let mut result = Rc::clone(&self.env.borrow().null_object);
 
-        for stmt in program.statements.iter_mut() {
+        for stmt in program.statements.iter() {
             result = self.eval_statement(stmt);
 
             match *result {
@@ -539,11 +535,15 @@ mod tests {
         enviroment::Enviroment,
         lexer::Lexer,
         object::{Boolean, HashKey, HashKeyable, Integer, Object, Str},
-        parser::Parser, test_helper::{test_integer_object, test_boolean_object, test_null_object, test_string_object, test_error_object},
+        parser::Parser,
+        test_helper::{
+            test_boolean_object, test_error_object, test_integer_object, test_null_object,
+            test_string_object,
+        },
     };
 
     fn test_eval(input: &str) -> Rc<Object> {
-        let mut lexer = Lexer::new(input.into());
+        let mut lexer = Lexer::new(input);
         let mut parser = Parser::new(&mut lexer);
         let env = Rc::new(RefCell::new(Enviroment::default()));
         let mut program = parser.parse_program();

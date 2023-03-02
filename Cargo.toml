@@ -1,5 +1,5 @@
 [package]
-name = "monkey_in_rust"
+name = "monkey_lang"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,3 +11,10 @@ fxhash = "0.2.1"
 lazy_static = "1.4.0"
 byteorder = "1.4.3"
 clap = { version = "4.1.6", features = ["derive"] }
+
+[dev-dependencies]
+criterion = "0.4"
+
+[[bench]]
+name = "engine"
+harness = false

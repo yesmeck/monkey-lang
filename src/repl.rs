@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     compiler::Compiler, enviroment::Enviroment, evaluator::Evaluator, lexer::Lexer, parser::Parser,
-    vm::Vm, Engine,
+    vm::Vm, Engine, makro::MacroExpension,
 };
 
 const MONKEY_FACE: &str = r#"            __,__
@@ -95,6 +95,11 @@ impl<'a> Repl<'a> {
                 self.prompt();
                 continue;
             }
+
+            let makro = MacroExpension::new(Rc::clone(&env));
+            makro.define_macros(&mut program);
+            makro.expand_macros(&mut program);
+
 
             let mut evaluator = Evaluator::new(Rc::clone(&env));
             let result = evaluator.eval(&mut program);

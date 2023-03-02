@@ -1,36 +1,11 @@
-use std::{env::args, fs, process, cell::RefCell, rc::Rc, path::PathBuf};
+#![feature(test)]
+use std::{cell::RefCell, env::args, fs, path::PathBuf, process, rc::Rc};
 
-use clap::{Parser, ValueEnum};
-use enviroment::Enviroment;
-use evaluator::Evaluator;
-use lexer::Lexer;
-use crate::{repl::Repl, compiler::Compiler, vm::Vm};
-
-mod ast;
-mod builtin;
-mod enviroment;
-mod evaluator;
-mod lexer;
-mod object;
-mod parser;
-mod repl;
-mod token;
-mod traverser;
-mod makro;
-mod code;
-mod compiler;
-mod symbol_table;
-mod vm;
-mod frame;
-
-#[cfg(test)]
-mod test_helper;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-pub enum Engine {
-    Vm,
-    Eval
-}
+use clap::Parser;
+use monkey_lang::{
+    compiler::Compiler, enviroment::Enviroment, evaluator::Evaluator, lexer::Lexer,
+    makro::MacroExpension, parser, repl::Repl, vm::Vm, Engine,
+};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about= None)]
@@ -53,14 +28,12 @@ fn main() {
 
 fn run(file: &PathBuf, engine: &Engine) {
     let script = fs::read_to_string(file).expect("Unable to read file");
-    let env = Rc::new(RefCell::new(Enviroment::default()));
-    let mut evaluator = Evaluator::new(env);
     let mut lexer = Lexer::new(&script);
     let mut parser = parser::Parser::new(&mut lexer);
     let mut program = parser.parse_program();
-   if !parser.errors.is_empty() {
+    if !parser.errors.is_empty() {
         for error in parser.errors.iter() {
-            println!("\t{}", error);
+            println!("\t{error}");
         }
         process::exit(1);
     }
@@ -72,13 +45,17 @@ fn run(file: &PathBuf, engine: &Engine) {
             vm.run();
             let result = vm.last_popped_stack_elem();
             println!("{}", result.inspect());
-        },
+        }
         Engine::Eval => {
+            let env = Rc::new(RefCell::new(Enviroment::default()));
+            let makro = MacroExpension::new(Rc::clone(&env));
+            makro.define_macros(&mut program);
+            makro.expand_macros(&mut program);
+            let mut evaluator = Evaluator::new(env);
             let result = evaluator.eval(&mut program);
             println!("{}", result.inspect());
-        },
+        }
     };
- 
 }
 
 fn repl(engine: &Engine) {
