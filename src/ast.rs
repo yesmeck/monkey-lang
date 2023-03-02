@@ -74,6 +74,10 @@ pub struct BlockStatement {
     pub statements: Vec<Statement>,
 }
 
+impl BlockStatement {
+    pub fn new(statements: Vec<Statement>) -> Self { Self { statements } }
+}
+
 impl Display for BlockStatement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -257,13 +261,14 @@ impl Display for HashMember {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionLiteral {
+    pub name: String,
     pub parameters: Vec<Identifier>,
     pub body: BlockStatement,
 }
 
 impl FunctionLiteral {
-    pub fn new(parameters: Vec<Identifier>, body: BlockStatement) -> Self {
-        Self { parameters, body }
+    pub fn new(name: String, parameters: Vec<Identifier>, body: BlockStatement) -> Self {
+        Self { name, parameters, body }
     }
 }
 
@@ -271,7 +276,8 @@ impl Display for FunctionLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "fn({}) {}",
+            "fn {}({}) {}",
+            self.name,
             self.parameters
                 .iter()
                 .map(|p| format!("{}", p))

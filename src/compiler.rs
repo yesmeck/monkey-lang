@@ -7,9 +7,10 @@ use crate::{
         InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
         Statement, StringLiteral,
     },
+    builtin::BUILTINS,
     code::{Instructions, Opcode},
     object::{CompiledFunction, Integer, Object, Str},
-    symbol_table::{SymbolScope, SymbolTable}, builtin::BUILTINS,
+    symbol_table::{Symbol, SymbolScope, SymbolTable},
 };
 
 #[derive(Debug)]
@@ -93,16 +94,16 @@ impl Compiler {
     }
 
     fn compile_let_statement(&mut self, node: &LetStatement) {
-        self.compile_expression(&node.value);
         let symbol = self
             .symbol_table
             .borrow_mut()
             .define(node.name.value.as_str());
+        self.compile_expression(&node.value);
         let symbol_index = symbol.index;
         let opcode = match symbol.scope {
             SymbolScope::Global => Opcode::SetGlobal,
             SymbolScope::Local => Opcode::SetLocal,
-            SymbolScope::Builtin => unreachable!(),
+            _ => unreachable!(),
         };
         self.emit(opcode, vec![symbol_index]);
     }
@@ -125,18 +126,11 @@ impl Compiler {
             Expression::ArrayLiteral(node) => self.compile_array_literal(node),
             Expression::HashLiteral(node) => self.compile_hash_literal(node),
             Expression::FunctionLiteral(node) => self.compile_function_literal(node),
-            Expression::Boolean(node) => self.compiler_boolean_expression(node),
+            Expression::Boolean(node) => self.compile_boolean_expression(node),
             Expression::Identifier(node) => {
-                let symbol = self.symbol_table.borrow().resolve(&node.value);
+                let symbol = self.symbol_table.borrow_mut().resolve(&node.value);
                 match symbol {
-                    Some(ref symbol) => {
-                        let opcode = match symbol.scope {
-                            SymbolScope::Global => Opcode::GetGlobal,
-                            SymbolScope::Local => Opcode::GetLocal,
-                            SymbolScope::Builtin => Opcode::GetBuiltin,
-                        };
-                        self.emit(opcode, vec![symbol.index.to_owned()])
-                    }
+                    Some(ref symbol) => self.load_symbol(symbol),
                     None => panic!("undefined variable {}", node.value),
                 };
             }
@@ -256,6 +250,10 @@ impl Compiler {
     fn compile_function_literal(&mut self, node: &FunctionLiteral) {
         self.enter_scope();
 
+        if node.name != "" {
+            self.symbol_table.borrow_mut().define_function_name(&node.name);
+        }
+
         for paramteter in node.parameters.iter() {
             self.symbol_table.borrow_mut().define(&paramteter.value);
         }
@@ -269,21 +267,34 @@ impl Compiler {
             self.emit(Opcode::Return, vec![]);
         }
 
+        let free_symbols = self.symbol_table.borrow().free_symbols.to_owned();
         let num_locals = self.symbol_table.borrow().num_definitions;
         let instructions = self.leave_scope();
-        let object = Object::CompiledFunction(CompiledFunction::new(
-            instructions,
-            num_locals,
-            node.parameters.len() as u8,
+
+        for sym in free_symbols.iter() {
+            self.load_symbol(sym);
+        }
+
+        let pos = self.add_constant(Object::CompiledFunction(
+            CompiledFunction::new(instructions, num_locals, node.parameters.len() as u8)
         ));
-        let pos = self.add_constant(object);
-        self.emit(Opcode::Constant, vec![pos]);
+        self.emit(Opcode::Closure, vec![pos, free_symbols.len() as u16]);
     }
 
-    fn compiler_boolean_expression(&mut self, node: &BooleanExpression) {
+    fn compile_boolean_expression(&mut self, node: &BooleanExpression) {
         match node.value {
             true => self.emit(Opcode::True, vec![]),
             false => self.emit(Opcode::False, vec![]),
+        };
+    }
+
+    fn load_symbol(&mut self, symbol: &Symbol) {
+        match symbol.scope {
+            SymbolScope::Global => self.emit(Opcode::GetGlobal, vec![symbol.index.to_owned()]),
+            SymbolScope::Local => self.emit(Opcode::GetLocal, vec![symbol.index.to_owned()]),
+            SymbolScope::Builtin => self.emit(Opcode::GetBuiltin, vec![symbol.index.to_owned()]),
+            SymbolScope::Free => self.emit(Opcode::GetFree, vec![symbol.index.to_owned()]),
+            SymbolScope::Function => self.emit(Opcode::CurrentClosure, vec![]),
         };
     }
 
@@ -400,9 +411,9 @@ mod tests {
     use crate::{
         code::{Instructions, Opcode},
         test_helper::{
-            parse, test_array_object, test_boolean_object, test_compiled_function,
+            parse, test_array_object, test_boolean_object, test_closure_object, test_error_object,
             test_hash_object, test_instructions, test_integer_object, test_null_object,
-            test_string_object, ExpectedValue, test_error_object,
+            test_string_object, ExpectedValue,
         },
     };
 
@@ -413,7 +424,6 @@ mod tests {
 
     fn run_compiler_tests(tests: &[CompilerTestCase]) {
         for test in tests.iter() {
-            println!("{}", test.0);
             let program = parse(test.0);
             let mut compiler = Compiler::new();
             compiler.compile(&program);
@@ -431,7 +441,7 @@ mod tests {
                 ExpectedValue::String(e) => test_string_object(&actual[i], e),
                 ExpectedValue::Array(e) => test_array_object(&actual[i], e),
                 ExpectedValue::Hash(e) => test_hash_object(&actual[i], e),
-                ExpectedValue::Function(e) => test_compiled_function(&actual[i], e),
+                ExpectedValue::Function(e) => test_closure_object(&actual[i], e),
                 ExpectedValue::Error(e) => test_error_object(&actual[i], e),
                 ExpectedValue::Null => test_null_object(&actual[i]),
             }
@@ -887,7 +897,7 @@ mod tests {
                         Opcode::ReturnValue.make(vec![]),
                     ]),
                 ],
-                vec![Opcode::Constant.make(vec![2]), Opcode::Pop.make(vec![])],
+                vec![Opcode::Closure.make(vec![2, 0]), Opcode::Pop.make(vec![])],
             ),
             CompilerTestCase(
                 "fn() { 5 + 10 }",
@@ -901,7 +911,7 @@ mod tests {
                         Opcode::ReturnValue.make(vec![]),
                     ]),
                 ],
-                vec![Opcode::Constant.make(vec![2]), Opcode::Pop.make(vec![])],
+                vec![Opcode::Closure.make(vec![2, 0]), Opcode::Pop.make(vec![])],
             ),
             CompilerTestCase(
                 "fn() { 1; 2 }",
@@ -915,12 +925,12 @@ mod tests {
                         Opcode::ReturnValue.make(vec![]),
                     ]),
                 ],
-                vec![Opcode::Constant.make(vec![2]), Opcode::Pop.make(vec![])],
+                vec![Opcode::Closure.make(vec![2, 0]), Opcode::Pop.make(vec![])],
             ),
             CompilerTestCase(
                 "fn() {}",
                 vec![ExpectedValue::Function(vec![Opcode::Return.make(vec![])])],
-                vec![Opcode::Constant.make(vec![0]), Opcode::Pop.make(vec![])],
+                vec![Opcode::Closure.make(vec![0, 0]), Opcode::Pop.make(vec![])],
             ),
         ];
 
@@ -1001,7 +1011,7 @@ mod tests {
                     ]),
                 ],
                 vec![
-                    Opcode::Constant.make(vec![1]),
+                    Opcode::Closure.make(vec![1, 0]),
                     Opcode::Call.make(vec![0]),
                     Opcode::Pop.make(vec![]),
                 ],
@@ -1016,10 +1026,28 @@ mod tests {
                     ]),
                 ],
                 vec![
-                    Opcode::Constant.make(vec![1]),
+                    Opcode::Closure.make(vec![1, 0]),
                     Opcode::SetGlobal.make(vec![0]),
                     Opcode::GetGlobal.make(vec![0]),
                     Opcode::Call.make(vec![0]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+            CompilerTestCase(
+                "let identity = fn(a) { a; }; identity(4);",
+                vec![
+                    ExpectedValue::Function(vec![
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Integer(4),
+                ],
+                vec![
+                    Opcode::Closure.make(vec![0, 0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::GetGlobal.make(vec![0]),
+                    Opcode::Constant.make(vec![1]),
+                    Opcode::Call.make(vec![1]),
                     Opcode::Pop.make(vec![]),
                 ],
             ),
@@ -1043,7 +1071,7 @@ mod tests {
                 vec![
                     Opcode::Constant.make(vec![0]),
                     Opcode::SetGlobal.make(vec![0]),
-                    Opcode::Constant.make(vec![1]),
+                    Opcode::Closure.make(vec![1, 0]),
                     Opcode::Pop.make(vec![]),
                 ],
             ),
@@ -1058,7 +1086,7 @@ mod tests {
                         Opcode::ReturnValue.make(vec![]),
                     ]),
                 ],
-                vec![Opcode::Constant.make(vec![1]), Opcode::Pop.make(vec![])],
+                vec![Opcode::Closure.make(vec![1, 0]), Opcode::Pop.make(vec![])],
             ),
             CompilerTestCase(
                 "fn() { let a = 55; let b = 77; a + b }",
@@ -1076,7 +1104,7 @@ mod tests {
                         Opcode::ReturnValue.make(vec![]),
                     ]),
                 ],
-                vec![Opcode::Constant.make(vec![2]), Opcode::Pop.make(vec![])],
+                vec![Opcode::Closure.make(vec![2, 0]), Opcode::Pop.make(vec![])],
             ),
             CompilerTestCase(
                 "let oneArg = fn(a) { a }; oneArg(24);",
@@ -1088,7 +1116,7 @@ mod tests {
                     ExpectedValue::Integer(24),
                 ],
                 vec![
-                    Opcode::Constant.make(vec![0]),
+                    Opcode::Closure.make(vec![0, 0]),
                     Opcode::SetGlobal.make(vec![0]),
                     Opcode::GetGlobal.make(vec![0]),
                     Opcode::Constant.make(vec![1]),
@@ -1112,7 +1140,7 @@ mod tests {
                     ExpectedValue::Integer(26),
                 ],
                 vec![
-                    Opcode::Constant.make(vec![0]),
+                    Opcode::Closure.make(vec![0, 0]),
                     Opcode::SetGlobal.make(vec![0]),
                     Opcode::GetGlobal.make(vec![0]),
                     Opcode::Constant.make(vec![1]),
@@ -1153,8 +1181,189 @@ mod tests {
                     Opcode::Call.make(vec![1]),
                     Opcode::ReturnValue.make(vec![]),
                 ])],
-                vec![Opcode::Constant.make(vec![0]), Opcode::Pop.make(vec![])],
+                vec![Opcode::Closure.make(vec![0, 0]), Opcode::Pop.make(vec![])],
             ),
+        ];
+
+        run_compiler_tests(&tests);
+    }
+
+    #[test]
+    fn test_closures() {
+        let tests = [
+            CompilerTestCase(
+                "fn(a) {
+                    fn(b) {
+                        a + b
+                    }
+                }",
+                vec![
+                    ExpectedValue::Function(vec![
+                        Opcode::GetFree.make(vec![0]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Add.make(vec![]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Function(vec![
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Closure.make(vec![0, 1]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                ],
+                vec![Opcode::Closure.make(vec![1, 0]), Opcode::Pop.make(vec![])],
+            ),
+            CompilerTestCase(
+                "fn(a) {
+                    fn(b) {
+                        fn(c) {
+                            a + b + c
+                        }
+                    }
+                }",
+                vec![
+                    ExpectedValue::Function(vec![
+                        Opcode::GetFree.make(vec![0]),
+                        Opcode::GetFree.make(vec![1]),
+                        Opcode::Add.make(vec![]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Add.make(vec![]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Function(vec![
+                        Opcode::GetFree.make(vec![0]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Closure.make(vec![0, 2]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Function(vec![
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Closure.make(vec![1, 1]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                ],
+                vec![Opcode::Closure.make(vec![2, 0]), Opcode::Pop.make(vec![])],
+            ),
+            CompilerTestCase(
+                "let global = 55
+                fn() {
+                    let a = 66;
+
+                    fn() {
+                        let b = 77;
+                        
+                        fn() {
+                            let c = 88;
+                            
+                            global + a + b + c;
+                        }
+                    }
+                }
+                ",
+                vec![
+                    ExpectedValue::Integer(55),
+                    ExpectedValue::Integer(66),
+                    ExpectedValue::Integer(77),
+                    ExpectedValue::Integer(88),
+                    ExpectedValue::Function(vec![
+                        Opcode::Constant.make(vec![3]),
+                        Opcode::SetLocal.make(vec![0]),
+                        Opcode::GetGlobal.make(vec![0]),
+                        Opcode::GetFree.make(vec![0]),
+                        Opcode::Add.make(vec![]),
+                        Opcode::GetFree.make(vec![1]),
+                        Opcode::Add.make(vec![]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Add.make(vec![]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Function(vec![
+                        Opcode::Constant.make(vec![2]),
+                        Opcode::SetLocal.make(vec![0]),
+                        Opcode::GetFree.make(vec![0]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Closure.make(vec![4, 2]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Function(vec![
+                        Opcode::Constant.make(vec![1]),
+                        Opcode::SetLocal.make(vec![0]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Closure.make(vec![5, 1]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                ],
+                vec![
+                    Opcode::Constant.make(vec![0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::Closure.make(vec![6, 0]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+        ];
+
+        run_compiler_tests(&tests);
+    }
+
+    #[test]
+    fn test_recursice_functions() {
+        let tests = [
+            CompilerTestCase(
+                "let countDown = fn(x) { countDown(x - 1); }; countDown(1);",
+                vec![
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Function(vec![
+                        Opcode::CurrentClosure.make(vec![]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Constant.make(vec![0]),
+                        Opcode::Sub.make(vec![]),
+                        Opcode::Call.make(vec![1]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Integer(1),
+                ],
+                vec![
+                    Opcode::Closure.make(vec![1, 0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::GetGlobal.make(vec![0]),
+                    Opcode::Constant.make(vec![2]),
+                    Opcode::Call.make(vec![1]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            ),
+            CompilerTestCase(
+                "let wrapper = fn() {
+                   let countDown = fn(x) { countDown(x - 1); };
+                   countDown(1);
+                };
+                wrapper();",
+                vec![
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Function(vec![
+                        Opcode::CurrentClosure.make(vec![]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Constant.make(vec![0]),
+                        Opcode::Sub.make(vec![]),
+                        Opcode::Call.make(vec![1]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ]),
+                    ExpectedValue::Integer(1),
+                    ExpectedValue::Function(vec![
+                        Opcode::Closure.make(vec![1, 0]),
+                        Opcode::SetLocal.make(vec![0]),
+                        Opcode::GetLocal.make(vec![0]),
+                        Opcode::Constant.make(vec![2]),
+                        Opcode::Call.make(vec![1]),
+                        Opcode::ReturnValue.make(vec![]),
+                    ])
+                ],
+                vec![
+                    Opcode::Closure.make(vec![3, 0]),
+                    Opcode::SetGlobal.make(vec![0]),
+                    Opcode::GetGlobal.make(vec![0]),
+                    Opcode::Call.make(vec![0]),
+                    Opcode::Pop.make(vec![]),
+                ],
+            )
         ];
 
         run_compiler_tests(&tests);

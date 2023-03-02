@@ -32,6 +32,9 @@ pub enum Opcode {
     GetLocal = 24,
     SetLocal = 25,
     GetBuiltin = 26,
+    Closure = 27,
+    GetFree = 28,
+    CurrentClosure = 29,
 }
 
 impl Opcode {
@@ -64,6 +67,9 @@ impl Opcode {
             24 => Self::GetLocal,
             25 => Self::SetLocal,
             26 => Self::GetBuiltin,
+            27 => Self::Closure,
+            28 => Self::GetFree,
+            29 => Self::CurrentClosure,
             _ => unreachable!(),
         }
     }
@@ -130,6 +136,9 @@ lazy_static! {
             (Opcode::GetLocal, Definition("OpGetLocal", vec![1])),
             (Opcode::SetLocal, Definition("OpSetLocal", vec![1])),
             (Opcode::GetBuiltin, Definition("OpGetBuiltin", vec![1])),
+            (Opcode::Closure, Definition("OpClosure", vec![2, 1])),
+            (Opcode::GetFree, Definition("OpGetFree", vec![1])),
+            (Opcode::CurrentClosure, Definition("OpCurrentClosure", vec![])),
         ])
     };
 }
@@ -190,6 +199,7 @@ impl Instructions {
             match operand_count {
                 0 => def.0.to_owned(),
                 1 => format!("{} {}", def.0, operands[0]),
+                2 => format!("{} {} {}", def.0, operands[0], operands[1]),
                 _ => format!("ERROR: unhandled operandCount for {}", def.0),
             }
         }
@@ -237,11 +247,13 @@ mod tests {
             Opcode::GetLocal.make(vec![1]),
             Opcode::Constant.make(vec![2]),
             Opcode::Constant.make(vec![65535]),
+            Opcode::Closure.make(vec![65535, 255]),
         ];
         let expected = "0000 OpAdd
 0001 OpGetLocal 1
 0003 OpConstant 2
 0006 OpConstant 65535
+0009 OpClosure 65535 255
 ";
         let concated = Instructions(instructions.iter().flat_map(|i| i.0.to_owned()).collect());
         assert_eq!(format!("{}", concated), expected);
@@ -261,6 +273,11 @@ mod tests {
                 vec![255],
                 Instructions(vec![Opcode::GetLocal as u8, 0xFF]),
             ),
+            (
+                Opcode::Closure,
+                vec![65534, 255],
+                Instructions(vec![Opcode::Closure as u8, 0xFF, 0xFE, 0xFF]),
+            ),
         ];
 
         for test in tests.iter() {
@@ -275,6 +292,7 @@ mod tests {
         let tests = [
             (Opcode::Constant, vec![65534], 2),
             (Opcode::GetLocal, vec![255], 1),
+            (Opcode::Closure, vec![65535, 255], 3),
         ];
 
         for (op, operands, bytes_read) in tests.iter() {

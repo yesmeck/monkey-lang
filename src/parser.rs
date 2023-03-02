@@ -210,6 +210,7 @@ impl<'a> Parser<'a> {
 
         if let Some(body) = self.parse_block_statement() {
             return Some(Expression::FunctionLiteral(FunctionLiteral::new(
+                "".into(),
                 parameters,
                 body,
             )));
@@ -394,12 +395,16 @@ impl<'a> Parser<'a> {
 
         self.next_token();
 
-        if let Some(value) = self.parse_expression(LOWEST) {
+        if let Some(ref mut value) = self.parse_expression(LOWEST) {
             if self.peek_token_is(&TokenKind::Semicolon) {
                 self.next_token()
             }
 
-            Some(Statement::Let(LetStatement::new(name, value)))
+            if let Expression::FunctionLiteral(ref mut func) = value {
+                func.name = name.value.to_owned();
+            }
+
+            Some(Statement::Let(LetStatement::new(name, value.to_owned())))
         } else {
             None
         }
@@ -772,6 +777,7 @@ return y;
             Program {
                 statements: vec![Statement::Expression(ExpressionStatement {
                     expression: Expression::FunctionLiteral(FunctionLiteral {
+                        name: "".into(),
                         parameters: vec![
                             Identifier { value: "x".into() },
                             Identifier { value: "y".into() },
@@ -1020,6 +1026,29 @@ return y;
                                 })
                             ))]
                         }
+                    ))
+                ))]
+            }
+        );
+    }
+
+    #[test]
+    fn test_function_literal_with_name() {
+        let input = "let myFunction = fn() { };";
+
+        let mut lexer = Lexer::new(input);
+        let mut parser = Parser::new(&mut lexer);
+        let program = parser.parse_program();
+
+        assert_eq!(
+            program,
+            Program {
+                statements: vec![Statement::Let(LetStatement::new(
+                    Identifier::new("myFunction".to_string()),
+                    Expression::FunctionLiteral(FunctionLiteral::new(
+                        "myFunction".to_string(),
+                        vec![],
+                        BlockStatement::new(vec![])
                     ))
                 ))]
             }

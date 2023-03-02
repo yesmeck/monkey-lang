@@ -76,7 +76,7 @@ pub fn test_hash_object(object: &Object, expected: &[(i64, i64)]) {
     }
 }
 
-pub fn test_compiled_function(object: &Object, expected: &[Instructions]) {
+pub fn test_closure_object(object: &Object, expected: &[Instructions]) {
     if let Object::CompiledFunction(ref func) = *object {
         test_instructions(&func.instructions, expected);
     } else {

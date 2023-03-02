@@ -22,6 +22,7 @@ pub enum ObjectKind {
     Hash,
     Quote,
     CompileFunction,
+    Closure,
 }
 
 impl Display for ObjectKind {
@@ -39,6 +40,7 @@ impl Display for ObjectKind {
             Self::Hash => write!(f, "HASH"),
             Self::Quote => write!(f, "QUOTE"),
             Self::CompileFunction => write!(f, "COMPILED_FUNCTION"),
+            Self::Closure => write!(f, "CLOSURE"),
         }
     }
 }
@@ -58,6 +60,7 @@ pub enum Object {
     CompiledFunction(CompiledFunction),
     Quote(Quote),
     Macro(Macro),
+    Closure(Closure),
 }
 
 impl Object {
@@ -76,6 +79,7 @@ impl Object {
             Self::CompiledFunction(o) => o.kind(),
             Self::Quote(o) => o.kind(),
             Self::Macro(o) => o.kind(),
+            Self::Closure(o) => o.kind(),
         }
     }
 
@@ -94,6 +98,7 @@ impl Object {
             Self::CompiledFunction(o) => o.inspect(),
             Self::Quote(o) => o.inspect(),
             Self::Macro(o) => o.inspect(),
+            Self::Closure(o) => o.inspect(),
         }
     }
 }
@@ -466,5 +471,27 @@ impl Inspector for CompiledFunction {
 
     fn inspect(&self) -> String {
         format!("CompiledFunction[{:p}]", self)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Closure {
+    pub func: CompiledFunction,
+    pub free: Vec<Rc<Object>>,
+}
+
+impl Closure {
+    pub fn new(func: CompiledFunction, free: Vec<Rc<Object>>) -> Self {
+        Self { func, free }
+    }
+}
+
+impl Inspector for Closure {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Closure
+    }
+
+    fn inspect(&self) -> String {
+        format!("Closure[{:p}]", self)
     }
 }

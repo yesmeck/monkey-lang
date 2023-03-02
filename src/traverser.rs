@@ -1,8 +1,8 @@
 use crate::ast::{
     ArrayLiteral, BlockStatement, BooleanExpression, CallExpression, Expression,
     ExpressionStatement, FunctionLiteral, HashLiteral, Identifier, IfExpression, IndexExpression,
-    InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
-    Statement, StringLiteral, NullLiteral, MacroLiteral,
+    InfixExpression, IntegerLiteral, LetStatement, MacroLiteral, NullLiteral, PrefixExpression,
+    Program, ReturnStatement, Statement, StringLiteral,
 };
 
 pub trait Visitor {
@@ -309,6 +309,7 @@ mod tests {
             (
                 Statement::Expression(ExpressionStatement::new(Expression::FunctionLiteral(
                     FunctionLiteral::new(
+                        "foo".into(),
                         vec![],
                         BlockStatement {
                             statements: vec![Statement::Expression(
@@ -319,6 +320,7 @@ mod tests {
                 ))),
                 Statement::Expression(ExpressionStatement::new(Expression::FunctionLiteral(
                     FunctionLiteral::new(
+                        "foo".into(),
                         vec![],
                         BlockStatement {
                             statements: vec![Statement::Expression(
