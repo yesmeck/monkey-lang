@@ -2,7 +2,7 @@
 
 A [Monkey](https://monkeylang.org/) implementation in Rust for learning purpose.
 
-This impelmentation includes both an interpreter and a virtual machine.
+This impelmentation includes both an [interpreter](https://github.com/yesmeck/monkey-lang/blob/master/src/evaluator.rs) and a [virtual machine](https://github.com/yesmeck/monkey-lang/blob/master/src/vm.rs).
 
 ## Usage
 
